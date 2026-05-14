@@ -46,8 +46,8 @@ enum DS {
 
     enum Radius {
         static let sm: CGFloat = 8
-        static let md: CGFloat = 12
-        static let lg: CGFloat = 18
+        static let md: CGFloat = 10
+        static let lg: CGFloat = 14
     }
 
     enum Space {
@@ -159,5 +159,17 @@ extension View {
                 RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
                     .stroke(selected ? DS.ColorToken.borderStrong : DS.ColorToken.borderSoft, lineWidth: 1)
             )
+    }
+}
+
+extension View {
+    func dsSurfaceShadow() -> some View {
+        shadow(color: Color.black.opacity(0.10), radius: 3, x: 0, y: 1)
+    }
+
+    func dsPanelShadow() -> some View {
+        self
+            .shadow(color: Color.black.opacity(0.07), radius: 24, x: 0, y: 8)
+            .shadow(color: Color.black.opacity(0.04), radius: 3, x: 0, y: 1)
     }
 }
