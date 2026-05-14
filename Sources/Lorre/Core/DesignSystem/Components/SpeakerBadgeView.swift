@@ -21,29 +21,36 @@ struct SpeakerBadgeView: View {
                         .stroke(DS.ColorToken.black, lineWidth: 0)
                 case .outline:
                     Capsule(style: .continuous)
-                        .stroke(DS.ColorToken.borderStrong, lineWidth: 1)
+                        .stroke(DS.ColorToken.borderSoft, lineWidth: 1)
                 case .doubleOutline:
                     Capsule(style: .continuous)
-                        .stroke(DS.ColorToken.borderStrong, lineWidth: 1)
+                        .stroke(DS.ColorToken.borderSoft, lineWidth: 1)
                         .padding(1.5)
                         .overlay(
                             Capsule(style: .continuous)
-                                .stroke(DS.ColorToken.borderStrong, lineWidth: 1)
+                                .stroke(DS.ColorToken.borderSoft, lineWidth: 1)
                                 .padding(3)
                         )
                 case .dashed:
                     Capsule(style: .continuous)
                         .stroke(style: StrokeStyle(lineWidth: 1, dash: [3, 2]))
-                        .foregroundStyle(DS.ColorToken.borderStrong)
+                        .foregroundStyle(DS.ColorToken.borderSoft)
                 }
             }
     }
 
     private var fill: Color {
-        variant == .filled ? DS.ColorToken.black : DS.ColorToken.bgPanel
+        variant == .filled ? DS.ColorToken.accentPrimary : DS.ColorToken.bgPanel
     }
 
     private var foreground: Color {
-        variant == .filled ? DS.ColorToken.white : DS.ColorToken.fgPrimary
+        switch variant {
+        case .filled:
+            return DS.ColorToken.onAccent
+        case .outline, .doubleOutline:
+            return DS.ColorToken.accentPrimary
+        case .dashed:
+            return DS.ColorToken.fgSecondary
+        }
     }
 }

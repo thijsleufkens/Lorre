@@ -46,7 +46,7 @@ struct IndexRailView: View {
         HStack(spacing: 2) {
             ForEach(0..<count, id: \.self) { index in
                 RoundedRectangle(cornerRadius: 1.5, style: .continuous)
-                    .fill(index.isMultiple(of: 3) ? DS.ColorToken.borderStrong : DS.ColorToken.borderSoft)
+                    .fill(index.isMultiple(of: 3) ? DS.ColorToken.accentPrimary : DS.ColorToken.borderSoft)
                     .frame(height: height - 4)
             }
         }
@@ -74,7 +74,7 @@ struct IndexRailView: View {
                 // Slightly boost low-to-mid amplitudes so spoken-volume changes read more clearly.
                 let scaledSample = min(1.0, max(0.03, pow(clamped, 0.62) * 1.18))
                 RoundedRectangle(cornerRadius: 1.25, style: .continuous)
-                    .fill(DS.ColorToken.black)
+                    .fill(DS.ColorToken.accentLive)
                     .frame(height: max(2, (height - 2) * CGFloat(scaledSample)))
             }
         }
@@ -102,9 +102,9 @@ struct IndexRailView: View {
     private func color(for variant: SpeakerBadgeVariant) -> Color {
         switch variant {
         case .filled:
-            return DS.ColorToken.black
+            return DS.ColorToken.accentPrimary
         case .outline:
-            return DS.ColorToken.borderStrong
+            return DS.ColorToken.accentPrimary
         case .doubleOutline:
             return DS.ColorToken.fgSecondary
         case .dashed:
