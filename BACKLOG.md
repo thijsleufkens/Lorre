@@ -36,37 +36,176 @@ is to produce the cleanest possible source material for those tools.
 
 ---
 
-## Theme 1 - Auto-detect and auto-record meetings (headline)
+## Theme 1 - Auto-record scheduled Teams meetings (headline, deferred)
 
-The single biggest workflow win: never forget to start recording. Lorre
-should know a meeting is happening and offer (or just start) a recording.
+**Status:** scoped, not yet implemented. Sized for after the export
+hand-off (Theme 8) lands so this feature can flow transcripts directly
+into the user's external AI tools.
 
-- **Conferencing app detection** - Detect when Zoom, Google Meet (in Chrome /
-  Safari / Arc), Microsoft Teams, FaceTime, Webex, and Slack huddles enter an
-  active call state. Use a combination of running processes, window titles,
-  and audio output device routing. Impact 5, Effort M, Horizon Now.
-- **Auto-record toast** - When a call starts, show a non-modal toast with
-  "Record this meeting" (default action), "Not this one", and "Always for
-  this app". Respects the user's last choice for ~10 minutes to avoid
-  re-prompting after a quick disconnect. Impact 5, Effort S, Horizon Now.
-- **Silent auto-start mode** - Opt-in mode that just starts the recording
-  without prompting, with a clear menu-bar indicator. For users who want
-  zero friction. Impact 4, Effort S, Horizon Now.
-- **Calendar-driven recording** - With EventKit permission, infer that a
-  meeting is starting from the user's calendar and combine the signal with
-  conferencing app detection so titles, attendees, and meeting links are
-  pre-filled on the new session. Impact 5, Effort M, Horizon Now.
-- **Smart stop** - Stop recording when the conferencing app exits the active
-  call state, after a configurable grace period. Confirm before stopping if
-  audio is still being detected (e.g. continued discussion in person after
-  the call ends). Impact 4, Effort S, Horizon Now.
-- **Per-app rules** - "Always record Zoom", "Never record FaceTime",
-  "Ask for Teams". Stored in settings, editable from the auto-record
-  toast. Impact 4, Effort S, Horizon Now.
-- **Pre-flight check at auto-start** - Run a 1-second mic/system-audio check
-  before committing to the recording so a misrouted output device is caught
-  before the user has talked for ten minutes. Impact 4, Effort S, Horizon
-  Now.
+**User story for this fork:** "Every Teams meeting on my calendar gets
+captured by Lorre without me thinking about it, and only the actual
+conversation gets recorded - not the pre-call dead air while people are
+joining."
+
+The single biggest workflow win for the primary user: never forget to
+start recording. Scheduled Teams calls dominate this fork's real-world
+usage, so V1 narrows hard on that case and leaves ad-hoc detection and
+other platforms for a follow-up.
+
+### V1 scope
+
+- **Calendar-driven arming (EventKit)** - The strongest predictive
+  signal. With calendar permission, Lorre watches for events whose
+  description or location field contains a Teams meeting link
+  (`teams.microsoft.com/l/meetup-join/...` or the legacy `teams.live.com`
+  patterns). When an event window opens (default: 5 minutes before
+  scheduled start), Lorre transitions into **Armed** state - watching,
+  not yet recording. Impact 5, Effort M.
+- **Teams call-state detection** - Once Armed, watch for evidence that
+  the meeting has actually started. Sources, in order of reliability:
+  Teams process running (`com.microsoft.teams2` / `com.microsoft.teams`)
+  AND default input device input level sustained above noise floor for
+  more than N seconds (default 8s), with audio output routed through a
+  device used by Teams. Direct "is in call" state is not exposed by
+  Teams as a public API, so this is a composite signal. Impact 5,
+  Effort M.
+- **Activity-driven stop** - Stop is **not** calendar-driven. Watch for
+  sustained mic silence (>30s default) AND Teams audio routing
+  dropping, then transition to **Cooling Down** for a grace period
+  (default 60s) before saving. Cooling Down resumes recording if audio
+  comes back. Impact 4, Effort S.
+- **Per-calendar rules** - "Always record meetings on calendar X",
+  "Ask first", "Never". Defaults to Ask. Stored in settings keyed by
+  EventKit calendar identifier. Impact 4, Effort S.
+- **Manual override always wins** - Manual record during Armed state
+  takes precedence, cancels the auto-arm watcher for that event.
+  Manual stop during auto-record ends the session normally without
+  the cooling-down dance. Impact 4, Effort S.
+- **Persistent armed indicator** - Menu-bar status item shows current
+  state (Idle / Armed / Recording / Cooling Down) so the user can
+  notice and intervene if start detection fails. Impact 4, Effort S.
+- **Pre-flight check at auto-start** - Before committing to the
+  recording, run a 1s mic + screen-recording-permission check. If
+  permissions are missing, surface a one-click prompt instead of
+  silently recording nothing. Impact 4, Effort S.
+
+### Timing model (the hard part)
+
+The "scheduled start time" and "actual conversation start" are rarely
+the same. Two state machines, deliberately separated:
+
+**Arming state machine** (driven by calendar)
+- Idle -> Armed: event with Teams link enters its window
+  (start - 5 min)
+- Armed -> Armed (extended): event has passed scheduled start but no
+  start signal yet. Keep watching until scheduled end + 30 min
+  (configurable). This is the "everybody is 10 minutes late" case.
+- Armed -> Idle: extended window elapsed without a start signal.
+  Optionally log a missed-meeting event for the user.
+- Armed -> Recording: start detection fires (see below).
+- Armed -> Manual: user starts recording manually inside the window.
+
+**Recording state machine** (driven by audio + process state)
+- Armed -> Recording: composite start signal sustains for N seconds.
+  Composite = (Teams process active) AND (mic level above noise floor)
+  AND (it is OK to start by per-calendar rule; otherwise prompt
+  first).
+- Recording -> Cooling Down: composite stop signal sustains for M
+  seconds. Composite = (mic silent) AND (Teams audio routing
+  inactive).
+- Cooling Down -> Recording: activity resumes within grace period.
+- Cooling Down -> Saved: grace period elapsed. Session is finalized
+  and exported per existing pipeline.
+
+### Edge cases to design for explicitly
+
+1. **Late start.** Meeting at 10:00 actually begins at 10:12. Lorre
+   stays Armed past the scheduled start; uses the +30 min extended
+   window. This is the most common case for the primary user.
+2. **Late finish.** Stop is activity-based, not calendar-based. The
+   scheduled end is informational only.
+3. **Join early, then wait.** User joins at 10:00 and waits alone for
+   5 minutes. No sustained 2-way conversation, so V1 still treats the
+   user's mic activity (greetings, "hi, can you hear me") as a start
+   signal. Accepted tradeoff: a few minutes of "is this thing on"
+   might be recorded. Future refinement could try to detect a second
+   voice before starting.
+4. **Back-to-back meetings.** 10:00 - 11:00 followed by 11:00 - 12:00,
+   both Teams. The first session's audio overflows past 11:00 by a
+   few minutes. V1 keeps recording the same session until activity
+   drops, then transitions the second event from Armed straight to
+   Recording when activity picks up again. Splitting one continuous
+   recording into two sessions is explicitly out of V1 scope.
+5. **User joins late.** Meeting 10:00 - 11:00, user joins at 10:20. No
+   audio before 10:20 is available locally anyway. Recording starts
+   when start detection fires post-10:20. Earlier scheduled time is
+   recorded in the manifest for context only.
+6. **Manual start during Armed.** Auto-arm watcher cancels for this
+   event. No double-start.
+7. **Manual start outside any Armed window.** Existing flow. No change.
+8. **Failed start detection.** Meeting actually started but composite
+   signal never fires (Teams crashed, mic muted, etc). Menu-bar
+   indicator stays on Armed; user can notice and click record. Add a
+   one-shot "Are you in a meeting? Lorre is armed but hasn't detected
+   the start." notification 5 minutes after scheduled start, only if
+   nothing has fired.
+9. **Cancelled / declined event.** EventKit reports event status.
+   Skip Armed transition for declined events; respect last-modified
+   for late cancellations.
+10. **Permissions revoked mid-flight.** Calendar or mic permission
+    revoked after Armed. Transition to Idle and surface a one-time
+    notification.
+11. **System sleep / lid close during Armed or Recording.** Recording
+    stops on sleep (AVFoundation behavior). On wake inside the event
+    window, re-arm; outside, transition to Idle. Document the gap in
+    the session manifest.
+12. **Multiple Teams calls in parallel.** Rare but possible (user has
+    Teams open for two tenants). V1 records the active default input
+    device only; second simultaneous call is missed. Out of V1 scope.
+
+### Open design questions
+
+- **Start signal weight.** Is mic activity alone (without Teams
+  process) enough to start? Probably no for this feature - the whole
+  point is "Teams meeting" - but worth confirming. The non-Teams
+  ad-hoc case belongs to the later expansion below.
+- **Calendar source.** EventKit aggregates iCloud, Google Calendar
+  (when connected to macOS Calendar), and Exchange / Microsoft 365
+  (when connected). For users on Outlook desktop only, EventKit may
+  not see the events. Document the supported configurations and
+  detect the "no calendars contain Teams links" empty state.
+- **Audio of the other side.** Capturing system audio requires Screen
+  Recording permission. Without it, auto-record gets only the user's
+  voice. Pre-flight check must catch this; settings must make the
+  cost of skipping system audio explicit.
+- **Privacy mode interaction.** Auto-records should default to the
+  user's current privacy-mode setting. No surprise behavior. Confirm
+  in onboarding.
+- **What constitutes "noise floor"?** A fixed dB threshold is fragile
+  across hardware. Probably needs a short calibration on first run
+  (existing pre-flight infrastructure could feed this).
+- **Configurability vs sensible defaults.** Every threshold above
+  (5 min pre-arm, 30 min post-end, 8s sustain, 30s silence, 60s
+  cooling) is tunable. V1 should ship sensible defaults and hide the
+  tunables behind an Advanced section.
+
+### Later expansion (out of V1 scope)
+
+- **Other platforms.** Zoom, Google Meet (browser), Slack huddles,
+  FaceTime. Each needs its own process-state detection. Worth
+  shipping once the Teams flow is proven.
+- **Ad-hoc call detection without a calendar event.** Mic-claim
+  polling for known meeting apps, with the same composite-signal
+  pattern. Useful for users whose calls are unplanned. Not the
+  primary use case for this fork.
+- **Browser-based Meet detection.** Distinguishing "Chrome is in a
+  meet.google.com tab" from "Chrome is doing anything else" needs
+  either Accessibility API (window titles) or a browser extension.
+  Material effort; defer.
+- **"Recording started 4 minutes after meeting began" warning.** If
+  start-detection latency is high, offer to mark the gap in the
+  manifest so downstream tools know.
+- **Multi-tenant Teams or parallel calls.** Rare and intricate.
 
 ## Theme 2 - Transcript quality and editing
 
@@ -267,23 +406,45 @@ transcripts for external thinking tools.
 
 ---
 
-## Suggested next release
+## Suggested release sequence
 
-A coherent slice that lands the new product focus:
+The roadmap is intentionally split so the AI-handoff plumbing ships before
+the auto-record investment. Without a clean export the auto-record feature
+records meetings into a workflow dead-end.
 
-1. Conferencing app detection + auto-record toast (Theme 1)
-2. Smart stop + per-app rules (Theme 1)
-3. Calendar-driven session metadata (Theme 1)
-4. Auto-identify enrolled speakers on new sessions (Theme 3)
-5. Bookmarks during recording (Theme 4)
-6. Full-text search across sessions (Theme 4)
-7. Floating recording HUD + menu bar quick record (Theme 5)
-8. Rich JSON export + "Copy as Markdown for Claude" + watch folder (Theme 8)
-9. Onboarding wizard covering the new auto-record opt-in (Theme 11)
+### Release N: Export hand-off (Theme 8)
 
-Together these turn Lorre into a transcription utility that quietly records
-the right meetings, produces a high-quality transcript, and hands it off to
-whatever AI tool the user already uses to think.
+Small, low-risk, unlocks the user's external AI workflow today.
+
+1. `SessionManifest.schemaVersion` + fixture-based migration test suite
+   (precondition for every additive schema change in later releases)
+2. Rich JSON export envelope v1 with stable schema, placeholder
+   `bookmarks` and `attendees` fields
+3. "Copy as Markdown for Claude" command in the session export menu
+4. Watch folder mirror: on session `.ready`, write JSON + structured
+   Markdown to a user-chosen folder via security-scoped bookmark
+
+### Release N+1: Auto-record Teams meetings via calendar (Theme 1 V1)
+
+Scoped narrowly to scheduled Teams meetings as documented in Theme 1.
+
+5. EventKit integration + Armed-state arming window
+6. Teams composite start-detection signal
+7. Activity-driven stop with cooling-down grace period
+8. Per-calendar rules + persistent menu-bar status indicator
+9. Pre-flight permission check at auto-start
+10. Onboarding wizard covering the new auto-record opt-in (Theme 11)
+
+### Release N+2: Capture polish and trust
+
+11. Auto-identify enrolled speakers on new sessions (Theme 3)
+12. Bookmarks during recording (Theme 4)
+13. Full-text search across sessions (Theme 4)
+14. Floating recording HUD + menu bar quick record (Theme 5)
+
+Together these turn Lorre into a transcription utility that quietly
+records the right meetings, produces a high-quality transcript, and
+hands it off to whatever AI tool the user already uses to think.
 
 ---
 
