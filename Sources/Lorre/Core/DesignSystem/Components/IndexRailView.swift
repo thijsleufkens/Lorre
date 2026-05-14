@@ -59,7 +59,7 @@ struct IndexRailView: View {
         let clamped = min(1, max(0, fraction))
         let innerWidth = max(0, (width - 6) * clamped)
         RoundedRectangle(cornerRadius: (height - 4) / 2, style: .continuous)
-            .fill(DS.ColorToken.black)
+            .fill(DS.ColorToken.accentPrimary)
             .frame(width: innerWidth, height: max(2, height - 4))
             .padding(.leading, 3)
             .padding(.vertical, 2)
