@@ -72,7 +72,7 @@ If privacy mode is enabled before a recording or import, Lorre deletes the sourc
 - Plain text
 - JSON
 
-<img width="1750" height="672" alt="image" src="https://github.com/user-attachments/assets/40a23c5c-093f-4363-aa1d-c42d88ddb98c" />
+<img src="Assets/Screenshots/lorre-light.png" alt="Lorre interface in Studio Sage light mode" width="860" />
 
 <p align="center">
   <a href="https://fluidinference.com">
