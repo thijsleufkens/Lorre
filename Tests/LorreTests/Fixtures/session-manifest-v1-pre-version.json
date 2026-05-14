@@ -1,0 +1,11 @@
+{
+  "id" : "11111111-1111-1111-1111-111111111111",
+  "title" : "Pre-version Session",
+  "status" : "ready",
+  "createdAt" : "2026-01-15T10:00:00Z",
+  "updatedAt" : "2026-01-15T10:30:00Z",
+  "recordedAt" : "2026-01-15T09:55:00Z",
+  "durationSeconds" : 1800,
+  "recordingSource" : "microphone",
+  "audioFileName" : "audio.caf"
+}

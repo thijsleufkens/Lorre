@@ -23,7 +23,10 @@ let package = Package(
         ),
         .testTarget(
             name: "LorreTests",
-            dependencies: ["Lorre"]
+            dependencies: ["Lorre"],
+            resources: [
+                .copy("Fixtures")
+            ]
         ),
     ]
 )

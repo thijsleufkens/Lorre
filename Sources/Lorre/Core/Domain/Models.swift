@@ -177,6 +177,9 @@ struct ExportRecord: Identifiable, Codable, Equatable, Sendable {
 }
 
 struct SessionManifest: Identifiable, Codable, Equatable, Sendable {
+    static let currentSchemaVersion = 1
+
+    var schemaVersion: Int
     var id: UUID
     var title: String
     var folderId: String?
@@ -198,6 +201,7 @@ struct SessionManifest: Identifiable, Codable, Equatable, Sendable {
     var dirtyFlags: SessionDirtyFlags
 
     init(
+        schemaVersion: Int = SessionManifest.currentSchemaVersion,
         id: UUID = UUID(),
         title: String,
         folderId: String? = nil,
@@ -218,6 +222,7 @@ struct SessionManifest: Identifiable, Codable, Equatable, Sendable {
         lastErrorMessage: String? = nil,
         dirtyFlags: SessionDirtyFlags = .clean
     ) {
+        self.schemaVersion = schemaVersion
         self.id = id
         self.title = title
         self.folderId = folderId
@@ -253,6 +258,7 @@ struct SessionManifest: Identifiable, Codable, Equatable, Sendable {
     }
 
     private enum CodingKeys: String, CodingKey {
+        case schemaVersion
         case id
         case title
         case folderId
@@ -276,6 +282,7 @@ struct SessionManifest: Identifiable, Codable, Equatable, Sendable {
 
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
+        self.schemaVersion = try container.decodeIfPresent(Int.self, forKey: .schemaVersion) ?? 1
         self.id = try container.decodeIfPresent(UUID.self, forKey: .id) ?? UUID()
         self.title = try container.decode(String.self, forKey: .title)
         self.folderId = try container.decodeIfPresent(String.self, forKey: .folderId)
@@ -299,6 +306,7 @@ struct SessionManifest: Identifiable, Codable, Equatable, Sendable {
 
     func encode(to encoder: Encoder) throws {
         var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(SessionManifest.currentSchemaVersion, forKey: .schemaVersion)
         try container.encode(id, forKey: .id)
         try container.encode(title, forKey: .title)
         try container.encodeIfPresent(folderId, forKey: .folderId)
