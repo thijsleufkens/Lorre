@@ -21,7 +21,6 @@ struct SessionShelfView: View {
             LazyVStack(alignment: .leading, spacing: DS.Space.x4) {
                 LorreWordmark()
                     .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(.horizontal, DS.Space.x4)
                     .padding(.top, DS.Space.x4)
                     .padding(.bottom, DS.Space.x2)
 
@@ -462,6 +461,13 @@ private struct FolderContentsListView: View {
                         .lineLimit(1)
                 }
                 Spacer(minLength: 0)
+                if let badgeColor = statusBadgeColor(for: session.status) {
+                    Text(session.status.label.uppercased())
+                        .font(DS.FontStyle.helper)
+                        .foregroundStyle(badgeColor)
+                        .lineLimit(1)
+                        .fixedSize(horizontal: true, vertical: false)
+                }
             }
             .padding(.horizontal, DS.Space.x3)
             .padding(.vertical, DS.Space.x2)
@@ -525,5 +531,21 @@ private struct FolderContentsListView: View {
 
     private func isDefaultGeneratedSessionTitle(_ title: String) -> Bool {
         title.hasPrefix("Session ")
+    }
+
+    /// Returns a color for the status badge, or nil to suppress the badge entirely.
+    /// `.idle` and `.ready` are suppressed — they are the default/boring states and
+    /// would clutter every row. Only actionable states get a badge.
+    private func statusBadgeColor(for status: SessionStatus) -> Color? {
+        switch status {
+        case .recording:
+            return DS.ColorToken.accentLive
+        case .error:
+            return DS.ColorToken.statusError
+        case .processing:
+            return DS.ColorToken.statusPreparing
+        case .idle, .ready:
+            return nil
+        }
     }
 }
