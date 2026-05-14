@@ -5,6 +5,5 @@ struct LorreWordmark: View {
         Text("Lorre")
             .font(DS.FontStyle.wordmark)
             .foregroundStyle(DS.ColorToken.serifInk)
-            .accessibilityAddTraits(.isHeader)
     }
 }
