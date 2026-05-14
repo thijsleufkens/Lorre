@@ -19,11 +19,6 @@ struct SessionShelfView: View {
     var body: some View {
         ScrollView(.vertical) {
             LazyVStack(alignment: .leading, spacing: DS.Space.x4) {
-                LorreWordmark()
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(.top, DS.Space.x4)
-                    .padding(.bottom, DS.Space.x2)
-
                 SearchFieldView(label: "Sessions", text: $viewModel.searchQuery)
 
                 HStack(spacing: DS.Space.x2) {
