@@ -101,14 +101,28 @@ cat > "$CONTENTS_DIR/Info.plist" <<PLIST
   <string>$MINIMUM_MACOS_VERSION</string>
   <key>NSMicrophoneUsageDescription</key>
   <string>Lorre transcribes audio locally — your microphone, system audio from other apps, or both.</string>
+  <key>NSAudioCaptureUsageDescription</key>
+  <string>Lorre captures audio from other apps so meetings and system audio can be transcribed locally.</string>
   <key>NSHighResolutionCapable</key>
   <true/>
 </dict>
 </plist>
 PLIST
 
+ENTITLEMENTS_PATH="$DIST_DIR/${APP_NAME}.entitlements"
+cat > "$ENTITLEMENTS_PATH" <<ENTITLEMENTS
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>com.apple.security.device.audio-input</key>
+  <true/>
+</dict>
+</plist>
+ENTITLEMENTS
+
 chmod +x "$MACOS_DIR/$APP_NAME"
-codesign --force --deep --sign - "$APP_BUNDLE"
+codesign --force --deep --sign - --entitlements "$ENTITLEMENTS_PATH" "$APP_BUNDLE"
 
 echo "Created: $APP_BUNDLE"
 echo "Binary:  $MACOS_DIR/$APP_NAME"
