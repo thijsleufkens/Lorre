@@ -8,6 +8,7 @@ struct LorreApp: App {
         WindowGroup("Lorre") {
             AppShellView(viewModel: viewModel)
                 .frame(minWidth: 1120, minHeight: 760)
+                .preferredColorScheme(nil)
                 .task {
                     await viewModel.start()
                 }
