@@ -168,7 +168,7 @@ extension View {
             )
     }
 
-    func dsActiveAccentBar(isActive: Bool, cornerRadius: CGFloat = DS.Radius.md) -> some View {
+    func dsActiveAccentBar(isActive: Bool) -> some View {
         overlay(alignment: .leading) {
             if isActive {
                 RoundedRectangle(cornerRadius: 1, style: .continuous)
