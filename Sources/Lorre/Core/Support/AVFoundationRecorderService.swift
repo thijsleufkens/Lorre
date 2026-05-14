@@ -3,16 +3,11 @@ import AVFoundation
 #if canImport(AppKit)
 import AppKit
 #endif
-#if canImport(ScreenCaptureKit)
-import CoreGraphics
-@preconcurrency import ScreenCaptureKit
-#endif
 import Foundation
 
 actor AVFoundationRecorderService: RecorderService {
     private enum PermissionSettingsPane {
         case microphone
-        case screenCapture
     }
 
     private final class CaptureFileWriterBox: @unchecked Sendable {
@@ -460,178 +455,15 @@ actor AVFoundationRecorderService: RecorderService {
         }
     }
 
-    #if canImport(ScreenCaptureKit)
-    private final class SystemAudioCaptureBox: NSObject, SCStreamOutput, @unchecked Sendable {
-        private let filter: SCContentFilter
-        private let outputURL: URL
-        private let writer: CaptureFileWriterBox
-        private let outputQueue = DispatchQueue(label: "Lorre.SystemAudioCapture")
-        private let onPCMBuffer: @Sendable (AVAudioPCMBuffer) -> Void
-        private let onMeterLevel: @Sendable (Double) -> Void
-        private let lock = NSLock()
-        private var failureMessage: String?
-        private var stream: SCStream?
-
-        init(
-            filter: SCContentFilter,
-            outputURL: URL,
-            onPCMBuffer: @escaping @Sendable (AVAudioPCMBuffer) -> Void,
-            onMeterLevel: @escaping @Sendable (Double) -> Void
-        ) throws {
-            self.filter = filter
-            self.outputURL = outputURL
-            let fileFormat = AVAudioFormat(
-                commonFormat: .pcmFormatFloat32,
-                sampleRate: 48_000,
-                channels: 2,
-                interleaved: false
-            )!
-            self.writer = try CaptureFileWriterBox(file: AVAudioFile(forWriting: outputURL, settings: fileFormat.settings))
-            self.onPCMBuffer = onPCMBuffer
-            self.onMeterLevel = onMeterLevel
-        }
-
-        func start() async throws {
-            let configuration = SCStreamConfiguration()
-            configuration.capturesAudio = true
-            configuration.excludesCurrentProcessAudio = true
-            configuration.sampleRate = 48_000
-            configuration.channelCount = 2
-            configuration.width = 2
-            configuration.height = 2
-
-            let stream = SCStream(filter: filter, configuration: configuration, delegate: nil)
-            try stream.addStreamOutput(self, type: .audio, sampleHandlerQueue: outputQueue)
-            do {
-                try await stream.startCapture()
-                self.stream = stream
-            } catch {
-                try? stream.removeStreamOutput(self, type: .audio)
-                throw error
-            }
-        }
-
-        func stop() async throws {
-            guard let stream else { return }
-            try await stream.stopCapture()
-            try? stream.removeStreamOutput(self, type: .audio)
-            self.stream = nil
-        }
-
-        func cancel() async {
-            try? await stop()
-        }
-
-        func failure() -> String? {
-            lock.lock()
-            defer { lock.unlock() }
-            return failureMessage ?? writer.failureMessage()
-        }
-
-        func stream(_ stream: SCStream, didOutputSampleBuffer sampleBuffer: CMSampleBuffer, of type: SCStreamOutputType) {
-            guard type == .audio else { return }
-            guard CMSampleBufferIsValid(sampleBuffer) else { return }
-            do {
-                let buffer = try RecorderAudioUtilities.extractPCMBuffer(from: sampleBuffer)
-                let converted = try RecorderAudioUtilities.convert(
-                    buffer,
-                    to: AVAudioFormat(commonFormat: .pcmFormatFloat32, sampleRate: 48_000, channels: 2, interleaved: false)!
-                )
-                writer.write(converted)
-                onMeterLevel(converted.lorre_meterLevel())
-                onPCMBuffer(converted)
-            } catch {
-                lock.lock()
-                if failureMessage == nil {
-                    failureMessage = error.localizedDescription
-                }
-                lock.unlock()
-            }
-        }
-    }
-
-    @MainActor
-    private final class ScreenCapturePickerObserverBox: NSObject, SCContentSharingPickerObserver {
-        private var continuation: CheckedContinuation<SCContentFilter, Error>?
-        private let picker = SCContentSharingPicker.shared
-
-        func present() async throws -> SCContentFilter {
-            var configuration = picker.defaultConfiguration
-            configuration.allowedPickerModes = [
-                .singleWindow,
-                .multipleWindows,
-                .singleApplication,
-                .multipleApplications,
-                .singleDisplay,
-            ]
-            configuration.allowsChangingSelectedContent = false
-            configuration.excludedBundleIDs = [Bundle.main.bundleIdentifier].compactMap { $0 }
-            picker.defaultConfiguration = configuration
-            picker.maximumStreamCount = 1
-            picker.isActive = true
-            picker.add(self)
-
-            return try await withCheckedThrowingContinuation { continuation in
-                self.continuation = continuation
-                picker.present()
-            }
-        }
-
-        nonisolated func contentSharingPicker(_ picker: SCContentSharingPicker, didCancelFor stream: SCStream?) {
-            _ = picker
-            _ = stream
-            Task { @MainActor in
-                self.finish(with: .failure(LorreError.recordingSourceSelectionCancelled))
-            }
-        }
-
-        nonisolated func contentSharingPicker(_ picker: SCContentSharingPicker, didUpdateWith filter: SCContentFilter, for stream: SCStream?) {
-            _ = picker
-            _ = stream
-            Task { @MainActor in
-                self.finish(with: .success(filter))
-            }
-        }
-
-        nonisolated func contentSharingPickerStartDidFailWithError(_ error: any Error) {
-            Task { @MainActor in
-                self.finish(with: .failure(error))
-            }
-        }
-
-        private func finish(with result: Result<SCContentFilter, Error>) {
-            guard let continuation else { return }
-            self.continuation = nil
-            picker.remove(self)
-            picker.isActive = false
-            switch result {
-            case let .success(filter):
-                continuation.resume(returning: filter)
-            case let .failure(error):
-                continuation.resume(throwing: error)
-            }
-        }
-    }
-    #endif
-
     private struct MicrophoneCaptureStartResult {
         var engine: AVAudioEngine
         var writer: CaptureFileWriterBox
         var tempURL: URL
     }
 
-    #if canImport(ScreenCaptureKit)
-    private struct SystemCaptureStartResult {
-        var capture: SystemAudioCaptureBox
-        var tempURL: URL
-    }
-    #endif
-
     private var microphoneEngine: AVAudioEngine?
     private var microphoneWriter: CaptureFileWriterBox?
-    #if canImport(ScreenCaptureKit)
-    private var systemCapture: SystemAudioCaptureBox?
-    #endif
+    private var systemAudioCapture: ProcessTapSystemAudioCapture?
     private var liveMonitorBridge: LiveMonitorBridgeBox?
     private var combinedMeterBox: CombinedMeterBox?
     private var previewMixer: MixedPreviewMixerBox?
@@ -665,13 +497,6 @@ actor AVFoundationRecorderService: RecorderService {
         }
 
         try await ensurePermissions(for: request.source)
-        #if canImport(ScreenCaptureKit)
-        let selectedFilter: SCContentFilter? = request.source.includesSystemAudio ? try await pickSystemAudioFilter() : nil
-        #else
-        if request.source.includesSystemAudio {
-            throw LorreError.recordingStartFailed("System audio capture is unavailable in this build.")
-        }
-        #endif
 
         let tempDir = FileManager.default.temporaryDirectory
             .appendingPathComponent("Lorre", isDirectory: true)
@@ -698,21 +523,31 @@ actor AVFoundationRecorderService: RecorderService {
                 micStart = nil
             }
 
-            #if canImport(ScreenCaptureKit)
-            let systemStart: SystemCaptureStartResult?
-            if request.source.includesSystemAudio, let filter = selectedFilter {
-                systemStart = try await startSystemAudioCapture(
-                    filter: filter,
-                    in: tempDir,
-                    combinedMeter: combinedMeter,
-                    previewBridge: monitorBridge,
-                    previewMixer: previewMixer,
-                    source: request.source
+            var systemAudioTempURLForCapture: URL? = nil
+            if request.source.includesSystemAudio {
+                let systemTempURL = tempDir.appendingPathComponent(UUID().uuidString).appendingPathExtension("caf")
+                systemAudioTempURLForCapture = systemTempURL
+                let processTap = ProcessTapSystemAudioCapture()
+                let source = request.source
+                _ = try await processTap.start(
+                    outputURL: systemTempURL,
+                    onPCMBuffer: { buffer in
+                        if source == .microphoneAndSystemAudio {
+                            previewMixer?.enqueue(buffer, source: .systemAudio)
+                        } else {
+                            monitorBridge.enqueueRecognitionBuffer(buffer)
+                        }
+                    },
+                    onMeterLevel: { level in
+                        if let combinedMeter {
+                            monitorBridge.setMeterLevel(combinedMeter.update(level, for: .systemAudio))
+                        } else {
+                            monitorBridge.setMeterLevel(level)
+                        }
+                    }
                 )
-            } else {
-                systemStart = nil
+                self.systemAudioCapture = processTap
             }
-            #endif
 
             let startedAt = Date()
             self.liveMonitorBridge = monitorBridge
@@ -720,9 +555,6 @@ actor AVFoundationRecorderService: RecorderService {
             self.previewMixer = previewMixer
             self.microphoneEngine = micStart?.engine
             self.microphoneWriter = micStart?.writer
-            #if canImport(ScreenCaptureKit)
-            self.systemCapture = systemStart?.capture
-            #endif
             self.startedAt = startedAt
             self.activeRecordingSource = request.source
             self.activeRecordingToken = UUID()
@@ -731,15 +563,11 @@ actor AVFoundationRecorderService: RecorderService {
             case .microphone:
                 self.temporaryCanonicalURL = micStart?.tempURL
             case .systemAudio:
-                #if canImport(ScreenCaptureKit)
-                self.temporaryCanonicalURL = systemStart?.tempURL
-                #endif
+                self.temporaryCanonicalURL = systemAudioTempURLForCapture
             case .microphoneAndSystemAudio:
                 self.temporaryCanonicalURL = nil
                 self.temporaryMicrophoneURL = micStart?.tempURL
-                #if canImport(ScreenCaptureKit)
-                self.temporarySystemAudioURL = systemStart?.tempURL
-                #endif
+                self.temporarySystemAudioURL = systemAudioTempURLForCapture
             }
 
             if isLiveTranscriptionEnabled, await supportsLiveTranscription(for: request.source) {
@@ -789,17 +617,11 @@ actor AVFoundationRecorderService: RecorderService {
         await stopLiveStreamingCaptureIfNeeded()
 
         let microphoneWriteFailure = microphoneWriter?.failureMessage()
-        #if canImport(ScreenCaptureKit)
-        let systemWriteFailure = systemCapture?.failure()
-        #else
-        let systemWriteFailure: String? = nil
-        #endif
+        let systemWriteFailure = systemAudioCapture?.writeFailure()
 
         self.microphoneEngine = nil
         self.microphoneWriter = nil
-        #if canImport(ScreenCaptureKit)
-        self.systemCapture = nil
-        #endif
+        self.systemAudioCapture = nil
         self.liveMonitorBridge = nil
         self.combinedMeterBox = nil
         self.previewMixer = nil
@@ -877,11 +699,7 @@ actor AVFoundationRecorderService: RecorderService {
 
     func supportsLiveTranscription(for source: RecordingSource) async -> Bool {
         #if canImport(FluidAudio)
-        #if canImport(ScreenCaptureKit)
         return source == .microphone || source == .systemAudio || source == .microphoneAndSystemAudio
-        #else
-        return source == .microphone
-        #endif
         #else
         _ = source
         return false
@@ -961,7 +779,8 @@ actor AVFoundationRecorderService: RecorderService {
     }
 
     private func ensurePermissions(for source: RecordingSource) async throws {
-        if source.includesMicrophone, !(await requestMicrophonePermission()) {
+        let needsMicrophone = source.includesMicrophone || source.includesSystemAudio
+        if needsMicrophone, !(await requestMicrophonePermission()) {
             await MainActor.run {
                 Self.openSystemSettings(for: .microphone)
             }
@@ -996,11 +815,6 @@ actor AVFoundationRecorderService: RecorderService {
                 URL(string: "x-apple.systempreferences:com.apple.settings.PrivacySecurity.extension?Privacy_Microphone"),
                 URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Microphone")
             ].compactMap { $0 }
-        case .screenCapture:
-            candidateURLs = [
-                URL(string: "x-apple.systempreferences:com.apple.settings.PrivacySecurity.extension?Privacy_ScreenCapture"),
-                URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture")
-            ].compactMap { $0 }
         }
 
         for url in candidateURLs where NSWorkspace.shared.open(url) {
@@ -1009,13 +823,6 @@ actor AVFoundationRecorderService: RecorderService {
         _ = NSWorkspace.shared.open(URL(fileURLWithPath: "/System/Applications/System Settings.app"))
         #endif
     }
-
-    #if canImport(ScreenCaptureKit)
-    private func pickSystemAudioFilter() async throws -> SCContentFilter {
-        let pickerObserver = await MainActor.run { ScreenCapturePickerObserverBox() }
-        return try await pickerObserver.present()
-    }
-    #endif
 
     private func startMicrophoneCapture(
         in tempDir: URL,
@@ -1058,50 +865,6 @@ actor AVFoundationRecorderService: RecorderService {
 
         return MicrophoneCaptureStartResult(engine: engine, writer: writer, tempURL: tempURL)
     }
-
-    #if canImport(ScreenCaptureKit)
-    private func startSystemAudioCapture(
-        filter: SCContentFilter,
-        in tempDir: URL,
-        combinedMeter: CombinedMeterBox?,
-        previewBridge: LiveMonitorBridgeBox,
-        previewMixer: MixedPreviewMixerBox?,
-        source: RecordingSource
-    ) async throws -> SystemCaptureStartResult {
-        let tempURL = tempDir.appendingPathComponent(UUID().uuidString).appendingPathExtension("caf")
-        let capture = try SystemAudioCaptureBox(
-            filter: filter,
-            outputURL: tempURL,
-            onPCMBuffer: { buffer in
-                if source == .microphoneAndSystemAudio {
-                    previewMixer?.enqueue(buffer, source: .systemAudio)
-                } else {
-                    previewBridge.enqueueRecognitionBuffer(buffer)
-                }
-            },
-            onMeterLevel: { level in
-                if let combinedMeter {
-                    previewBridge.setMeterLevel(combinedMeter.update(level, for: .systemAudio))
-                } else {
-                    previewBridge.setMeterLevel(level)
-                }
-            }
-        )
-        do {
-            try await capture.start()
-        } catch {
-            await capture.cancel()
-            if Self.isScreenCapturePermissionError(error) {
-                await MainActor.run {
-                    Self.openSystemSettings(for: .screenCapture)
-                }
-                throw LorreError.screenCapturePermissionDenied
-            }
-            throw LorreError.recordingStartFailed("System audio capture failed to start. \(error.localizedDescription)")
-        }
-        return SystemCaptureStartResult(capture: capture, tempURL: tempURL)
-    }
-    #endif
 
     private func startLiveStreamingStartupTask(for recordingToken: UUID) {
         liveStartupTask?.cancel()
@@ -1195,11 +958,7 @@ actor AVFoundationRecorderService: RecorderService {
             engine.inputNode.removeTap(onBus: 0)
             engine.stop()
         }
-        #if canImport(ScreenCaptureKit)
-        if let systemCapture {
-            try await systemCapture.stop()
-        }
-        #endif
+        systemAudioCapture?.stop()
     }
 
     private func cleanupPartialRecordingState(removeTemporaryFiles: Bool = true) async throws {
@@ -1214,9 +973,7 @@ actor AVFoundationRecorderService: RecorderService {
 
         self.microphoneEngine = nil
         self.microphoneWriter = nil
-        #if canImport(ScreenCaptureKit)
-        self.systemCapture = nil
-        #endif
+        self.systemAudioCapture = nil
         self.liveMonitorBridge = nil
         self.combinedMeterBox = nil
         self.previewMixer = nil
@@ -1245,18 +1002,6 @@ actor AVFoundationRecorderService: RecorderService {
         try FileManager.default.moveItem(at: sourceURL, to: destinationURL)
     }
 
-    private static func isScreenCapturePermissionError(_ error: Error) -> Bool {
-        #if canImport(ScreenCaptureKit)
-        let nsError = error as NSError
-        guard nsError.domain == SCStreamErrorDomain else {
-            return false
-        }
-
-        return nsError.code == -3801 || nsError.code == -3802 || nsError.code == -3818
-        #else
-        _ = error
-        return false
-        #endif
-    }
 }
+
 #endif
