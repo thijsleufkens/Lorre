@@ -148,16 +148,36 @@ struct SecondaryControlButtonStyle: ButtonStyle {
 }
 
 extension View {
-    func dsPanelSurface(selected: Bool = false, alt: Bool = false, cornerRadius: CGFloat = DS.Radius.md) -> some View {
-        self
+    func dsPanelSurface(
+        selected: Bool = false,
+        alt: Bool = false,
+        cornerRadius: CGFloat = DS.Radius.lg
+    ) -> some View {
+        let fill: Color = {
+            if selected { return DS.ColorToken.bgPanelAlt }
+            return alt ? DS.ColorToken.bgPanel : DS.ColorToken.bgPanelAlt
+        }()
+        return self
             .background(
                 RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-                    .fill(selected ? DS.ColorToken.bgPanel : (alt ? DS.ColorToken.bgPanelAlt : DS.ColorToken.bgPanel))
+                    .fill(fill)
             )
             .overlay(
                 RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
                     .stroke(selected ? DS.ColorToken.borderStrong : DS.ColorToken.borderSoft, lineWidth: 1)
             )
+    }
+
+    func dsActiveAccentBar(isActive: Bool, cornerRadius: CGFloat = DS.Radius.md) -> some View {
+        overlay(alignment: .leading) {
+            if isActive {
+                RoundedRectangle(cornerRadius: 1, style: .continuous)
+                    .fill(DS.ColorToken.accentPrimary)
+                    .frame(width: 2)
+                    .padding(.vertical, 4)
+                    .padding(.leading, 1)
+            }
+        }
     }
 }
 
