@@ -14,11 +14,6 @@ enum UserFacingErrorMapper {
                     title: "Microphone access required",
                     message: lorreError.localizedDescription
                 )
-            case .screenCapturePermissionDenied:
-                return UserFacingErrorMessage(
-                    title: "Screen recording access required",
-                    message: lorreError.localizedDescription
-                )
             case .recordingSourceSelectionCancelled:
                 return UserFacingErrorMessage(
                     title: "Recording not started",
