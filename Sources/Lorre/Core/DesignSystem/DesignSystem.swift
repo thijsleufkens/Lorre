@@ -62,16 +62,26 @@ enum DS {
     }
 
     enum FontStyle {
+        // Brand voice (italic serif)
+        static let wordmark = Font.custom("Iowan Old Style", size: 22).italic()
+        static let sectionLabel = Font.custom("Iowan Old Style", size: 13).italic()
+        static let groupHead = Font.custom("Iowan Old Style", size: 12).italic()
+
+        // UI sans (system SF Pro)
         static let appTitle = Font.system(size: 22, weight: .semibold)
-        static let panelTitle = Font.system(size: 20, weight: .semibold)
-        static let stageStatus = Font.system(size: 14, weight: .medium)
+        static let panelTitle = Font.system(size: 26, weight: .semibold).leading(.tight)
         static let body = Font.system(size: 13, weight: .regular)
         static let bodyStrong = Font.system(size: 13, weight: .semibold)
         static let control = Font.system(size: 12, weight: .semibold)
         static let helper = Font.system(size: 11, weight: .regular)
+        static let kicker = Font.system(size: 11, weight: .semibold)
+        static let stageStatus = kicker
+
+        // Mono (system SF Mono)
+        static let timer = Font.system(size: 56, weight: .medium, design: .monospaced)
+        static let timerCompact = Font.system(size: 18, weight: .semibold, design: .monospaced)
         static let mono = Font.system(size: 11, weight: .regular, design: .monospaced)
         static let monoStrong = Font.system(size: 12, weight: .semibold, design: .monospaced)
-        static let timer = Font.system(size: 18, weight: .semibold, design: .monospaced)
     }
 }
 
