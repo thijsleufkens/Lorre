@@ -3,7 +3,6 @@ import SwiftUI
 struct RecorderConsoleView: View {
     @ObservedObject var viewModel: AppViewModel
     @State private var isShowingCancelRecordingConfirmation = false
-    @State private var isShowingKnownSpeakerLibrary = false
 
     var body: some View {
         ScrollView(.vertical, showsIndicators: true) {
@@ -104,330 +103,87 @@ struct RecorderConsoleView: View {
     }
 
     private var setupConsole: some View {
+        RecorderSetupView(viewModel: viewModel)
+    }
+}
+
+private struct RecorderSetupView: View {
+    @ObservedObject var viewModel: AppViewModel
+    @Environment(\.openSettings) private var openSettings
+
+    var body: some View {
         VStack(alignment: .leading, spacing: DS.Space.x4) {
-            RecorderSetupHeaderView()
-            RecorderSectionDivider()
-            RecorderSourceQuickAccessView(viewModel: viewModel)
-            RecorderInsetPanel {
-                VStack(alignment: .leading, spacing: DS.Space.x3) {
-                    RecorderPrivacyQuickAccessView(viewModel: viewModel)
-                    RecorderSectionDivider()
-                    RecorderProcessingProfileView(
-                        viewModel: viewModel,
-                        isShowingKnownSpeakerLibrary: $isShowingKnownSpeakerLibrary
-                    )
-                }
+            VStack(alignment: .leading, spacing: 4) {
+                Text("— Recorder")
+                    .font(DS.FontStyle.sectionLabel)
+                    .foregroundStyle(DS.ColorToken.serifInk)
+                Text(heroTitle)
+                    .font(DS.FontStyle.panelTitle)
+                    .foregroundStyle(DS.ColorToken.fgPrimary)
             }
 
-            RecorderStartDockView(viewModel: viewModel) {
+            Button {
                 viewModel.startRecordingTapped()
-            }
-        }
-        .padding(DS.Space.x4)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .dsPanelSurface(cornerRadius: DS.Radius.lg)
-    }
-}
-
-private struct RecorderSetupHeaderView: View {
-    var body: some View {
-        VStack(alignment: .leading, spacing: DS.Space.x3) {
-            titleBlock
-
-            IndexRailView(mode: .idleTicks, height: 8)
-                .frame(maxWidth: .infinity)
-        }
-    }
-
-    private var titleBlock: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            Text("— Recorder")
-                .font(DS.FontStyle.sectionLabel)
-                .foregroundStyle(DS.ColorToken.serifInk)
-            Text("Arm the capture, then start.")
-                .font(DS.FontStyle.panelTitle)
-                .foregroundStyle(DS.ColorToken.fgPrimary)
-        }
-    }
-}
-
-private struct RecorderInsetPanel<Content: View>: View {
-    let content: Content
-
-    init(@ViewBuilder content: () -> Content) {
-        self.content = content()
-    }
-
-    var body: some View {
-        content
-            .padding(DS.Space.x3)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .dsPanelSurface(alt: true, cornerRadius: DS.Radius.md)
-    }
-}
-
-private struct RecorderSectionDivider: View {
-    var body: some View {
-        Rectangle()
-            .fill(DS.ColorToken.borderSoft)
-            .frame(height: 1)
-    }
-}
-
-private struct RecorderStartDockView: View {
-    @ObservedObject var viewModel: AppViewModel
-    let onStart: () -> Void
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: DS.Space.x3) {
-            startButton
-
-            if viewModel.selectedRecordingSource.includesSystemAudio {
-                Text("Lorre will show the native picker after you press Start Recording so you can choose the app, window, or display audio.")
-                    .font(DS.FontStyle.helper)
-                    .foregroundStyle(DS.ColorToken.fgSecondary)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-
-            IndexRailView(mode: .idleTicks, height: 8)
-                .frame(maxWidth: .infinity)
-        }
-        .padding(DS.Space.x4)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .dsPanelSurface(alt: true, cornerRadius: DS.Radius.lg)
-    }
-
-    private var startButton: some View {
-        Button(action: onStart) {
-            HStack(spacing: DS.Space.x2) {
-                ZStack {
+            } label: {
+                HStack(spacing: 8) {
                     Circle()
-                        .stroke(DS.ColorToken.onAccent.opacity(0.34), lineWidth: 1)
-                        .frame(width: 20, height: 20)
-
-                    Circle()
-                        .fill(DS.ColorToken.onAccent)
-                        .frame(width: 7, height: 7)
-                }
-
-                Text("Start Recording")
-                    .font(.system(size: 14, weight: .semibold))
-                    .foregroundStyle(DS.ColorToken.onAccent)
-
-                Spacer(minLength: DS.Space.x2)
-
-                Image(systemName: "chevron.right")
-                    .font(.system(size: 11, weight: .semibold))
-                    .foregroundStyle(DS.ColorToken.onAccent.opacity(0.76))
-            }
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .contentShape(Rectangle())
-        }
-        .buttonStyle(RecorderStartActionButtonStyle())
-        .disabled(viewModel.isStartingRecording)
-        .accessibilityHint("Starts \(viewModel.selectedRecordingSource.label.lowercased()) recording with the current privacy and processing profile")
-    }
-}
-
-private struct RecorderSummaryBadge: View {
-    let text: String
-
-    var body: some View {
-        Text(text)
-            .font(DS.FontStyle.mono)
-            .foregroundStyle(DS.ColorToken.fgSecondary)
-            .padding(.horizontal, DS.Space.x2)
-            .padding(.vertical, 5)
-            .background(
-                Capsule(style: .continuous)
-                    .fill(DS.ColorToken.bgPanel)
-            )
-            .overlay(
-                Capsule(style: .continuous)
-                    .stroke(DS.ColorToken.borderSoft, lineWidth: 1)
-            )
-    }
-}
-
-private struct RecorderSourceQuickAccessView: View {
-    @ObservedObject var viewModel: AppViewModel
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: DS.Space.x2) {
-            HStack(spacing: DS.Space.x2) {
-                CapsLabel(text: "Capture Mode")
-                Text(viewModel.selectedRecordingSource.shortLabel.uppercased())
-                    .font(DS.FontStyle.control)
-                    .foregroundStyle(DS.ColorToken.fgSecondary)
-            }
-
-            ViewThatFits(in: .horizontal) {
-                HStack(spacing: DS.Space.x2) {
-                    ForEach(RecordingSource.allCases) { source in
-                        Button(source.label) {
-                            viewModel.setRecordingSource(source)
-                        }
-                        .buttonStyle(
-                            RecorderSourceOptionButtonStyle(
-                                isSelected: viewModel.selectedRecordingSource == source,
-                                iconName: sourceIcon(for: source),
-                                detail: sourceDetail(for: source)
-                            )
-                        )
-                        .disabled(isLockedDuringCapture)
-                    }
-                }
-
-                VStack(spacing: DS.Space.x2) {
-                    ForEach(RecordingSource.allCases) { source in
-                        Button(source.label) {
-                            viewModel.setRecordingSource(source)
-                        }
-                        .buttonStyle(
-                            RecorderSourceOptionButtonStyle(
-                                isSelected: viewModel.selectedRecordingSource == source,
-                                iconName: sourceIcon(for: source),
-                                detail: sourceDetail(for: source)
-                            )
-                        )
-                        .disabled(isLockedDuringCapture)
-                    }
+                        .fill(DS.ColorToken.accentLive)
+                        .frame(width: 10, height: 10)
+                    Text("Start recording")
+                        .fontWeight(.semibold)
                 }
             }
+            .buttonStyle(.borderedProminent)
+            .tint(DS.ColorToken.accentPrimary)
+            .controlSize(.large)
+            .disabled(!canStart)
 
-            if viewModel.selectedRecordingSource.includesSystemAudio {
-                Text("After start, Lorre opens the native picker so you can choose the app, window, or display audio to capture.")
+            VStack(alignment: .leading, spacing: 4) {
+                Text(sourceLine)
                     .font(DS.FontStyle.helper)
                     .foregroundStyle(DS.ColorToken.fgSecondary)
-                    .fixedSize(horizontal: false, vertical: true)
+                HStack(spacing: 4) {
+                    Text(preferencesLine)
+                        .font(DS.FontStyle.helper)
+                        .foregroundStyle(DS.ColorToken.fgSecondary)
+                    Button {
+                        openSettings()
+                    } label: {
+                        Image(systemName: "gearshape")
+                            .font(.system(size: 11))
+                            .foregroundStyle(DS.ColorToken.fgSecondary)
+                    }
+                    .buttonStyle(.plain)
+                    .help("Open Settings")
+                }
             }
 
-            if isLockedDuringCapture {
-                Text("Finish or cancel the current recording to change the source.")
-                    .font(DS.FontStyle.helper)
-                    .foregroundStyle(DS.ColorToken.fgTertiary)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
+            Spacer()
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        .padding(DS.Space.x6)
     }
 
-    private var isLockedDuringCapture: Bool {
-        viewModel.isStartingRecording || viewModel.isRecording || viewModel.isStoppingRecording
+    private var heroTitle: String {
+        "New recording"
     }
 
-    private func sourceDetail(for source: RecordingSource) -> String {
-        switch source {
-        case .microphone:
-            return "Your voice only"
-        case .systemAudio:
-            return "Mac audio only"
-        case .microphoneAndSystemAudio:
-            return "Your voice + Mac audio"
+    private var canStart: Bool {
+        !viewModel.isStartingRecording && !viewModel.isRecording && !viewModel.isStoppingRecording
+    }
+
+    private var sourceLine: String {
+        switch viewModel.selectedRecordingSource {
+        case .microphone: return "Microphone · 48 kHz"
+        case .microphoneAndSystemAudio: return "Microphone + system audio · 48 kHz"
+        case .systemAudio: return "System audio · 48 kHz"
         }
     }
 
-    private func sourceIcon(for source: RecordingSource) -> String {
-        switch source {
-        case .microphone:
-            return "mic.fill"
-        case .systemAudio:
-            return "speaker.wave.2.fill"
-        case .microphoneAndSystemAudio:
-            return "waveform.badge.mic"
-        }
-    }
-}
-
-private struct RecorderSourceOptionButtonStyle: ButtonStyle {
-    let isSelected: Bool
-    let iconName: String
-    let detail: String
-
-    func makeBody(configuration: Configuration) -> some View {
-        HStack(alignment: .center, spacing: DS.Space.x2) {
-            iconBadge
-
-            VStack(alignment: .leading, spacing: 2) {
-                configuration.label
-                    .font(DS.FontStyle.control)
-                    .foregroundStyle(isSelected ? DS.ColorToken.onAccent : DS.ColorToken.fgPrimary)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .lineLimit(1)
-
-                Text(detail)
-                    .font(DS.FontStyle.helper)
-                    .foregroundStyle(isSelected ? DS.ColorToken.onAccent.opacity(0.82) : DS.ColorToken.fgSecondary)
-                    .lineLimit(1)
-            }
-
-            if isSelected {
-                Image(systemName: "checkmark")
-                    .font(.system(size: 11, weight: .semibold))
-                    .foregroundStyle(DS.ColorToken.onAccent)
-            }
-        }
-        .padding(.horizontal, DS.Space.x2_5)
-        .padding(.vertical, DS.Space.x2)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(
-            RoundedRectangle(cornerRadius: DS.Radius.md, style: .continuous)
-                .fill(isSelected ? DS.ColorToken.accentPrimary.opacity(configuration.isPressed ? 0.92 : 1) : .clear)
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: DS.Radius.md, style: .continuous)
-                .stroke(
-                    isSelected ? DS.ColorToken.white.opacity(0.12) : DS.ColorToken.borderSoft,
-                    lineWidth: 1
-                )
-        )
-        .contentShape(RoundedRectangle(cornerRadius: DS.Radius.md, style: .continuous))
-    }
-
-    private var iconBadge: some View {
-        ZStack {
-            RoundedRectangle(cornerRadius: DS.Radius.sm, style: .continuous)
-                .fill(isSelected ? DS.ColorToken.white.opacity(0.12) : .clear)
-                .frame(width: 30, height: 30)
-
-            RoundedRectangle(cornerRadius: DS.Radius.sm, style: .continuous)
-                .stroke(isSelected ? DS.ColorToken.white.opacity(0.16) : DS.ColorToken.borderSoft, lineWidth: 1)
-                .frame(width: 30, height: 30)
-
-            Image(systemName: iconName)
-                .font(.system(size: 11, weight: .semibold))
-                .foregroundStyle(isSelected ? DS.ColorToken.onAccent : DS.ColorToken.fgSecondary)
-        }
-    }
-}
-
-private struct RecorderStartActionButtonStyle: ButtonStyle {
-    @Environment(\.isEnabled) private var isEnabled
-
-    func makeBody(configuration: Configuration) -> some View {
-        let pressed = configuration.isPressed && isEnabled
-
-        configuration.label
-            .padding(.horizontal, DS.Space.x3)
-            .padding(.vertical, DS.Space.x2)
-            .background(
-                RoundedRectangle(cornerRadius: DS.Radius.md, style: .continuous)
-                    .fill(
-                        isEnabled
-                            ? DS.ColorToken.accentPrimary.opacity(pressed ? 0.85 : 1)
-                            : DS.ColorToken.bgPanelAlt
-                    )
-            )
-            .overlay(
-                RoundedRectangle(cornerRadius: DS.Radius.md, style: .continuous)
-                    .stroke(
-                        isEnabled
-                            ? DS.ColorToken.onAccent.opacity(0.08)
-                            : DS.ColorToken.borderStrong,
-                        lineWidth: 1
-                    )
-            )
-            .opacity(isEnabled ? 1 : 0.95)
+    private var preferencesLine: String {
+        let live = viewModel.isLiveTranscriptionEnabled ? "Live preview on" : "Live preview off"
+        let retention = viewModel.isDeleteAudioAfterTranscriptionEnabled ? "Delete after transcript" : "Keep audio"
+        return "\(live) · \(retention)"
     }
 }
 
@@ -503,447 +259,6 @@ private struct LiveTranscriptPreviewCard: View {
     }
 }
 
-private struct RecorderLivePreviewQuickAccessView: View {
-    @ObservedObject var viewModel: AppViewModel
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: DS.Space.x2) {
-            ViewThatFits(in: .horizontal) {
-                HStack(alignment: .center, spacing: DS.Space.x2) {
-                    titleRow
-                    toggleControl
-                }
-
-                VStack(alignment: .leading, spacing: DS.Space.x2) {
-                    titleRow
-                    toggleControl
-                }
-            }
-
-            Text(statusDescription)
-                .font(DS.FontStyle.helper)
-                .foregroundStyle(DS.ColorToken.fgSecondary)
-                .fixedSize(horizontal: false, vertical: true)
-
-            if isLockedDuringCapture {
-                Text("You can change this before you start recording, or after you stop.")
-                    .font(DS.FontStyle.helper)
-                    .foregroundStyle(DS.ColorToken.fgTertiary)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-        }
-        .padding(DS.Space.x3)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .dsPanelSurface(alt: true, cornerRadius: DS.Radius.md)
-    }
-
-    private var titleRow: some View {
-        HStack(spacing: DS.Space.x2) {
-            CapsLabel(text: "Live Preview")
-            Text(viewModel.isLiveTranscriptionEnabled ? "ON" : "OFF")
-                .font(DS.FontStyle.control)
-                .foregroundStyle(DS.ColorToken.fgSecondary)
-        }
-    }
-
-    private var toggleControl: some View {
-        Toggle(
-            "Enable English-only live transcript preview while recording",
-            isOn: Binding(
-                get: { viewModel.isLiveTranscriptionEnabled },
-                set: { viewModel.setLiveTranscriptionEnabled($0) }
-            )
-        )
-        .labelsHidden()
-        .accessibilityLabel("Enable English-only live transcript preview while recording")
-        .toggleStyle(.switch)
-        .tint(DS.ColorToken.fgPrimary)
-        .disabled(isToggleDisabled)
-        .help(toggleHelpText)
-    }
-
-    private var isLockedDuringCapture: Bool {
-        viewModel.isStartingRecording || viewModel.isRecording || viewModel.isStoppingRecording
-    }
-
-    private var isToggleDisabled: Bool {
-        !viewModel.isLiveTranscriptionSupported || isLockedDuringCapture
-    }
-
-    private var toggleHelpText: String {
-        if !viewModel.isLiveTranscriptionSupported {
-            return "Live preview is unavailable in this build"
-        }
-        if isLockedDuringCapture {
-            return "Finish or cancel the current recording to change live preview"
-        }
-        return "Show an English-only live transcript preview while recording"
-    }
-
-    private var statusDescription: String {
-        if !viewModel.isLiveTranscriptionSupported {
-            return "English-only Live Preview is not available in this build. Your recording will still be transcribed after you stop."
-        }
-        if viewModel.isLiveTranscriptionEnabled {
-            return "Shows a live transcript while recording (English only). After you stop, Lorre runs the full final transcript."
-        }
-        return "English-only Live Preview is off. Lorre will transcribe the audio after you stop."
-    }
-}
-
-private struct RecorderPrivacyQuickAccessView: View {
-    @ObservedObject var viewModel: AppViewModel
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: DS.Space.x2) {
-            titleRow
-
-            Text(statusDescription)
-                .font(DS.FontStyle.helper)
-                .foregroundStyle(DS.ColorToken.fgSecondary)
-                .fixedSize(horizontal: false, vertical: true)
-
-            ViewThatFits(in: .horizontal) {
-                HStack(spacing: DS.Space.x2) {
-                    privacyOption(
-                        title: "Keep Audio",
-                        detail: "Playback and waveform review stay available after transcription.",
-                        isSelected: !viewModel.isDeleteAudioAfterTranscriptionEnabled
-                    ) {
-                        viewModel.setDeleteAudioAfterTranscriptionEnabled(false)
-                    }
-
-                    privacyOption(
-                        title: "Delete After Transcript",
-                        detail: "Lorre removes the source audio and keeps the transcript and exports.",
-                        isSelected: viewModel.isDeleteAudioAfterTranscriptionEnabled
-                    ) {
-                        viewModel.setDeleteAudioAfterTranscriptionEnabled(true)
-                    }
-                }
-
-                VStack(spacing: DS.Space.x2) {
-                    privacyOption(
-                        title: "Keep Audio",
-                        detail: "Playback and waveform review stay available after transcription.",
-                        isSelected: !viewModel.isDeleteAudioAfterTranscriptionEnabled
-                    ) {
-                        viewModel.setDeleteAudioAfterTranscriptionEnabled(false)
-                    }
-
-                    privacyOption(
-                        title: "Delete After Transcript",
-                        detail: "Lorre removes the source audio and keeps the transcript and exports.",
-                        isSelected: viewModel.isDeleteAudioAfterTranscriptionEnabled
-                    ) {
-                        viewModel.setDeleteAudioAfterTranscriptionEnabled(true)
-                    }
-                }
-            }
-
-            if isLockedDuringCapture {
-                Text("Finish or cancel the current recording to change this privacy setting.")
-                    .font(DS.FontStyle.helper)
-                    .foregroundStyle(DS.ColorToken.fgTertiary)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-        }
-    }
-
-    private var titleRow: some View {
-        HStack(spacing: DS.Space.x2) {
-            CapsLabel(text: "Retention")
-            Text(viewModel.isDeleteAudioAfterTranscriptionEnabled ? "DELETE AFTER TRANSCRIPT" : "KEEP AUDIO")
-                .font(DS.FontStyle.control)
-                .foregroundStyle(DS.ColorToken.fgSecondary)
-        }
-    }
-
-    private var isLockedDuringCapture: Bool {
-        viewModel.isStartingRecording || viewModel.isRecording || viewModel.isStoppingRecording
-    }
-
-    private func privacyOption(
-        title: String,
-        detail: String,
-        isSelected: Bool,
-        action: @escaping () -> Void
-    ) -> some View {
-        Button(action: action) {
-            VStack(alignment: .leading, spacing: 2) {
-                HStack(spacing: DS.Space.x1_5) {
-                    Text(title)
-                        .font(DS.FontStyle.control)
-                        .foregroundStyle(isSelected ? DS.ColorToken.onAccent : DS.ColorToken.fgPrimary)
-                        .lineLimit(1)
-                    Spacer()
-                    if isSelected {
-                        Image(systemName: "checkmark")
-                            .font(.system(size: 11, weight: .semibold))
-                            .foregroundStyle(DS.ColorToken.onAccent)
-                    }
-                }
-
-                Text(detail)
-                    .font(DS.FontStyle.helper)
-                    .foregroundStyle(isSelected ? DS.ColorToken.onAccent.opacity(0.82) : DS.ColorToken.fgSecondary)
-                    .lineLimit(2)
-            }
-            .padding(.horizontal, DS.Space.x2_5)
-            .padding(.vertical, DS.Space.x2)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .background(
-                RoundedRectangle(cornerRadius: DS.Radius.md, style: .continuous)
-                    .fill(isSelected ? DS.ColorToken.accentPrimary : .clear)
-            )
-            .overlay(
-                RoundedRectangle(cornerRadius: DS.Radius.md, style: .continuous)
-                    .stroke(
-                        isSelected ? DS.ColorToken.white.opacity(0.12) : DS.ColorToken.borderSoft,
-                        lineWidth: 1
-                    )
-            )
-        }
-        .buttonStyle(.plain)
-        .disabled(isLockedDuringCapture)
-    }
-
-    private var statusDescription: String {
-        if viewModel.isDeleteAudioAfterTranscriptionEnabled {
-            return "Transcript and exports only."
-        }
-        return "Audio stays available for playback and waveform review."
-    }
-}
-
-private struct RecorderProcessingProfileView: View {
-    @ObservedObject var viewModel: AppViewModel
-    @Binding var isShowingKnownSpeakerLibrary: Bool
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: DS.Space.x2) {
-            HStack(spacing: DS.Space.x2) {
-                CapsLabel(text: "Processing Profile")
-                Text(profileStateLabel)
-                    .font(DS.FontStyle.control)
-                    .foregroundStyle(DS.ColorToken.fgSecondary)
-            }
-
-            Text(profileDescription)
-                .font(DS.FontStyle.helper)
-                .foregroundStyle(DS.ColorToken.fgSecondary)
-                .fixedSize(horizontal: false, vertical: true)
-
-            VStack(spacing: DS.Space.x2) {
-                processingRow(
-                    title: "Speaker recognition",
-                    detail: speakerRecognitionDetail,
-                    control: {
-                        HStack(spacing: DS.Space.x2) {
-                            Toggle(
-                                "Enable automatic speaker labeling",
-                                isOn: Binding(
-                                    get: { viewModel.isSpeakerDiarizationEnabled },
-                                    set: { viewModel.setSpeakerDiarizationEnabled($0) }
-                                )
-                            )
-                            .labelsHidden()
-                            .toggleStyle(.switch)
-                            .tint(DS.ColorToken.fgPrimary)
-                            .disabled(isLockedDuringCapture)
-
-                            expectedSpeakersMenu
-                        }
-                    }
-                )
-
-                processingRow(
-                    title: "Live preview",
-                    detail: livePreviewDetail,
-                    control: {
-                        Toggle(
-                            "Enable English-only live transcript preview while recording",
-                            isOn: Binding(
-                                get: { viewModel.isLiveTranscriptionEnabled },
-                                set: { viewModel.setLiveTranscriptionEnabled($0) }
-                            )
-                        )
-                        .labelsHidden()
-                        .toggleStyle(.switch)
-                        .tint(DS.ColorToken.fgPrimary)
-                        .disabled(!viewModel.isLiveTranscriptionSupported || isLockedDuringCapture)
-                    }
-                )
-            }
-
-            if viewModel.isSpeakerDiarizationEnabled {
-                Button {
-                    withAnimation(.easeInOut(duration: 0.18)) {
-                        isShowingKnownSpeakerLibrary.toggle()
-                    }
-                } label: {
-                    HStack(spacing: DS.Space.x2) {
-                        CapsLabel(text: "Speaker Library")
-                        Text("\(viewModel.knownSpeakers.count) enrolled")
-                            .font(DS.FontStyle.mono)
-                            .foregroundStyle(DS.ColorToken.fgSecondary)
-                        Spacer()
-                        Text(isShowingKnownSpeakerLibrary ? "Hide" : "Manage")
-                            .font(DS.FontStyle.control)
-                            .foregroundStyle(DS.ColorToken.fgSecondary)
-                        Image(systemName: isShowingKnownSpeakerLibrary ? "chevron.up" : "chevron.down")
-                            .font(.system(size: 10, weight: .semibold))
-                            .foregroundStyle(DS.ColorToken.fgSecondary)
-                    }
-                    .padding(.horizontal, DS.Space.x3)
-                    .padding(.vertical, DS.Space.x1_5)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .background(
-                        RoundedRectangle(cornerRadius: DS.Radius.md, style: .continuous)
-                            .fill(DS.ColorToken.bgPanelAlt)
-                    )
-                    .overlay(
-                        RoundedRectangle(cornerRadius: DS.Radius.md, style: .continuous)
-                            .stroke(DS.ColorToken.borderSoft, lineWidth: 1)
-                    )
-                }
-                .buttonStyle(.plain)
-                .disabled(isLockedDuringCapture)
-
-                if isShowingKnownSpeakerLibrary {
-                    KnownSpeakerLibraryQuickAccessView(viewModel: viewModel)
-                }
-            }
-        }
-    }
-
-    private var isLockedDuringCapture: Bool {
-        viewModel.isStartingRecording || viewModel.isRecording || viewModel.isStoppingRecording
-    }
-
-    private func processingRow<Control: View>(
-        title: String,
-        detail: String,
-        @ViewBuilder control: () -> Control
-    ) -> some View {
-        ViewThatFits(in: .horizontal) {
-            HStack(alignment: .top, spacing: DS.Space.x3) {
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(title)
-                        .font(DS.FontStyle.control)
-                        .foregroundStyle(DS.ColorToken.fgPrimary)
-                    Text(detail)
-                        .font(DS.FontStyle.helper)
-                        .foregroundStyle(DS.ColorToken.fgSecondary)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-                Spacer(minLength: DS.Space.x2)
-                control()
-            }
-
-            VStack(alignment: .leading, spacing: DS.Space.x2) {
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(title)
-                        .font(DS.FontStyle.control)
-                        .foregroundStyle(DS.ColorToken.fgPrimary)
-                    Text(detail)
-                        .font(DS.FontStyle.helper)
-                        .foregroundStyle(DS.ColorToken.fgSecondary)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-                control()
-            }
-        }
-        .padding(.horizontal, DS.Space.x2_5)
-        .padding(.vertical, DS.Space.x2)
-        .background(
-            RoundedRectangle(cornerRadius: DS.Radius.md, style: .continuous)
-                .fill(.clear)
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: DS.Radius.md, style: .continuous)
-                .stroke(DS.ColorToken.borderSoft, lineWidth: 1)
-        )
-    }
-
-    private var expectedSpeakersMenu: some View {
-        Menu {
-            ForEach(DiarizationSpeakerCountHint.tuningPresets, id: \.self) { hint in
-                Button {
-                    viewModel.setDiarizationExpectedSpeakerCountHint(hint)
-                } label: {
-                    if viewModel.diarizationExpectedSpeakerCountHint.normalized() == hint.normalized() {
-                        Label(hint.detailLabel, systemImage: "checkmark")
-                    } else {
-                        Text(hint.detailLabel)
-                    }
-                }
-            }
-        } label: {
-            HStack(spacing: 6) {
-                Text(viewModel.diarizationExpectedSpeakerCountHint.detailLabel)
-                    .font(DS.FontStyle.control)
-                    .foregroundStyle(DS.ColorToken.fgPrimary)
-                Image(systemName: "chevron.down")
-                    .font(.system(size: 10, weight: .semibold))
-                    .foregroundStyle(DS.ColorToken.fgSecondary)
-            }
-            .padding(.horizontal, DS.Space.x2)
-            .padding(.vertical, 6)
-            .background(
-                RoundedRectangle(cornerRadius: DS.Radius.sm, style: .continuous)
-                    .fill(DS.ColorToken.bgPanelAlt)
-            )
-            .overlay(
-                RoundedRectangle(cornerRadius: DS.Radius.sm, style: .continuous)
-                    .stroke(DS.ColorToken.borderSoft, lineWidth: 1)
-            )
-        }
-        .disabled(!viewModel.isSpeakerDiarizationEnabled || isLockedDuringCapture)
-    }
-
-    private var profileStateLabel: String {
-        if viewModel.isSpeakerDiarizationEnabled && viewModel.isLiveTranscriptionEnabled {
-            return "FULL PROFILE"
-        }
-        if viewModel.isSpeakerDiarizationEnabled || viewModel.isLiveTranscriptionEnabled {
-            return "MIXED PROFILE"
-        }
-        return "POST-PASS ONLY"
-    }
-
-    private var profileDescription: String {
-        let speaker = viewModel.isSpeakerDiarizationEnabled
-            ? "Lorre will label speakers during the final transcript pass."
-            : "Speakers stay manual unless you reprocess later."
-        let live: String
-        if !viewModel.isLiveTranscriptionSupported {
-            live = "Live preview is unavailable in this build."
-        } else if viewModel.isLiveTranscriptionEnabled {
-            live = "An English-only preview appears while recording."
-        } else {
-            live = "No live preview during capture."
-        }
-        return "\(speaker) \(live)"
-    }
-
-    private var speakerRecognitionDetail: String {
-        if viewModel.isSpeakerDiarizationEnabled {
-            return "Expected speakers: \(viewModel.diarizationExpectedSpeakerCountHint.detailLabel). Enrolled voices help relabel diarization clusters."
-        }
-        return "Turn this on if you want Lorre to assign speaker labels automatically after capture."
-    }
-
-    private var livePreviewDetail: String {
-        if !viewModel.isLiveTranscriptionSupported {
-            return "Not available in this build. The final transcript still runs after you stop."
-        }
-        if viewModel.isLiveTranscriptionEnabled {
-            return "Shows an English-only preview while recording. Final post-pass remains the source of truth."
-        }
-        return "Capture first, then let Lorre transcribe after you stop."
-    }
-}
 
 struct ProcessingPipelineView: View {
     @ObservedObject var viewModel: AppViewModel
