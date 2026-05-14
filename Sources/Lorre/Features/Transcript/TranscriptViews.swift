@@ -83,13 +83,17 @@ struct TranscriptStageView: View {
                 .dsPanelSurface(cornerRadius: DS.Radius.lg)
             } else {
                 VStack(alignment: .leading, spacing: DS.Space.x2) {
-                    CapsLabel(text: "Transcript")
-                    Text("Transcript is not available yet.")
-                        .font(DS.FontStyle.panelTitle)
-                        .foregroundStyle(DS.ColorToken.fgPrimary)
-                    Text("Select a ready session or wait for processing to complete.")
-                        .font(DS.FontStyle.body)
-                        .foregroundStyle(DS.ColorToken.fgSecondary)
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("— Transcript")
+                            .font(DS.FontStyle.sectionLabel)
+                            .foregroundStyle(DS.ColorToken.serifInk)
+                        Text("Transcript is not available yet.")
+                            .font(DS.FontStyle.panelTitle)
+                            .foregroundStyle(DS.ColorToken.fgPrimary)
+                        Text("Select a ready session or wait for processing to complete.")
+                            .font(DS.FontStyle.helper)
+                            .foregroundStyle(DS.ColorToken.fgSecondary)
+                    }
                     IndexRailView(mode: .idleTicks, height: 8)
                 }
                 .padding(DS.Space.x4)

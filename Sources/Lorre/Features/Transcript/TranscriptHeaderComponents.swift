@@ -471,7 +471,7 @@ struct TranscriptHeaderView: View {
 
                     if !session.normalizedNotes.isEmpty {
                         Circle()
-                            .fill(DS.ColorToken.black)
+                            .fill(DS.ColorToken.accentPrimary)
                             .frame(width: 5, height: 5)
                             .offset(x: 3, y: -3)
                     }
