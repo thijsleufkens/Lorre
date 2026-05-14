@@ -203,11 +203,6 @@ struct SessionShelfView: View {
                         }
                     }
                 }
-
-                ModelStatusCompactPanelView(
-                    viewModel: viewModel,
-                    isShowingSettings: $isShowingModelSettings
-                )
             }
             .padding(DS.Space.x4)
             .frame(maxWidth: .infinity, alignment: .leading)
