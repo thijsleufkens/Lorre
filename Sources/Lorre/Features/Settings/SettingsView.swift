@@ -20,10 +20,6 @@ struct SettingsView: View {
 }
 
 // Placeholder stubs — replaced by dedicated files in later tasks.
-private struct SpeakersSettingsTab: View {
-    @ObservedObject var viewModel: AppViewModel
-    var body: some View { Form { Text("Speakers — placeholder") }.formStyle(.grouped) }
-}
 private struct AboutSettingsTab: View {
     var body: some View { Form { Text("About — placeholder") }.formStyle(.grouped) }
 }
