@@ -202,23 +202,23 @@ private struct RecorderStartDockView: View {
             HStack(spacing: DS.Space.x2) {
                 ZStack {
                     Circle()
-                        .stroke(DS.ColorToken.white.opacity(0.34), lineWidth: 1)
+                        .stroke(DS.ColorToken.onAccent.opacity(0.34), lineWidth: 1)
                         .frame(width: 20, height: 20)
 
                     Circle()
-                        .fill(DS.ColorToken.white)
+                        .fill(DS.ColorToken.onAccent)
                         .frame(width: 7, height: 7)
                 }
 
                 Text("Start Recording")
                     .font(.system(size: 14, weight: .semibold))
-                    .foregroundStyle(DS.ColorToken.white)
+                    .foregroundStyle(DS.ColorToken.onAccent)
 
                 Spacer(minLength: DS.Space.x2)
 
                 Image(systemName: "chevron.right")
                     .font(.system(size: 11, weight: .semibold))
-                    .foregroundStyle(DS.ColorToken.white.opacity(0.76))
+                    .foregroundStyle(DS.ColorToken.onAccent.opacity(0.76))
             }
             .frame(maxWidth: .infinity, alignment: .leading)
             .contentShape(Rectangle())
@@ -351,20 +351,20 @@ private struct RecorderSourceOptionButtonStyle: ButtonStyle {
             VStack(alignment: .leading, spacing: 2) {
                 configuration.label
                     .font(DS.FontStyle.control)
-                    .foregroundStyle(isSelected ? DS.ColorToken.white : DS.ColorToken.fgPrimary)
+                    .foregroundStyle(isSelected ? DS.ColorToken.onAccent : DS.ColorToken.fgPrimary)
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .lineLimit(1)
 
                 Text(detail)
                     .font(DS.FontStyle.helper)
-                    .foregroundStyle(isSelected ? DS.ColorToken.white.opacity(0.82) : DS.ColorToken.fgSecondary)
+                    .foregroundStyle(isSelected ? DS.ColorToken.onAccent.opacity(0.82) : DS.ColorToken.fgSecondary)
                     .lineLimit(1)
             }
 
             if isSelected {
                 Image(systemName: "checkmark")
                     .font(.system(size: 11, weight: .semibold))
-                    .foregroundStyle(DS.ColorToken.white)
+                    .foregroundStyle(DS.ColorToken.onAccent)
             }
         }
         .padding(.horizontal, DS.Space.x2_5)
@@ -372,7 +372,7 @@ private struct RecorderSourceOptionButtonStyle: ButtonStyle {
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(
             RoundedRectangle(cornerRadius: DS.Radius.md, style: .continuous)
-                .fill(isSelected ? DS.ColorToken.black.opacity(configuration.isPressed ? 0.92 : 1) : .clear)
+                .fill(isSelected ? DS.ColorToken.accentPrimary.opacity(configuration.isPressed ? 0.92 : 1) : .clear)
         )
         .overlay(
             RoundedRectangle(cornerRadius: DS.Radius.md, style: .continuous)
@@ -396,7 +396,7 @@ private struct RecorderSourceOptionButtonStyle: ButtonStyle {
 
             Image(systemName: iconName)
                 .font(.system(size: 11, weight: .semibold))
-                .foregroundStyle(isSelected ? DS.ColorToken.white : DS.ColorToken.fgSecondary)
+                .foregroundStyle(isSelected ? DS.ColorToken.onAccent : DS.ColorToken.fgSecondary)
         }
     }
 }
@@ -414,7 +414,7 @@ private struct RecorderStartActionButtonStyle: ButtonStyle {
                 RoundedRectangle(cornerRadius: DS.Radius.md, style: .continuous)
                     .fill(
                         isEnabled
-                            ? DS.ColorToken.black.opacity(pressed ? 0.92 : 1)
+                            ? DS.ColorToken.accentPrimary.opacity(pressed ? 0.85 : 1)
                             : DS.ColorToken.bgPanelAlt
                     )
             )
@@ -422,7 +422,7 @@ private struct RecorderStartActionButtonStyle: ButtonStyle {
                 RoundedRectangle(cornerRadius: DS.Radius.md, style: .continuous)
                     .stroke(
                         isEnabled
-                            ? DS.ColorToken.white.opacity(0.08)
+                            ? DS.ColorToken.onAccent.opacity(0.08)
                             : DS.ColorToken.borderStrong,
                         lineWidth: 1
                     )
@@ -674,19 +674,19 @@ private struct RecorderPrivacyQuickAccessView: View {
                 HStack(spacing: DS.Space.x1_5) {
                     Text(title)
                         .font(DS.FontStyle.control)
-                        .foregroundStyle(isSelected ? DS.ColorToken.white : DS.ColorToken.fgPrimary)
+                        .foregroundStyle(isSelected ? DS.ColorToken.onAccent : DS.ColorToken.fgPrimary)
                         .lineLimit(1)
                     Spacer()
                     if isSelected {
                         Image(systemName: "checkmark")
                             .font(.system(size: 11, weight: .semibold))
-                            .foregroundStyle(DS.ColorToken.white)
+                            .foregroundStyle(DS.ColorToken.onAccent)
                     }
                 }
 
                 Text(detail)
                     .font(DS.FontStyle.helper)
-                    .foregroundStyle(isSelected ? DS.ColorToken.white.opacity(0.82) : DS.ColorToken.fgSecondary)
+                    .foregroundStyle(isSelected ? DS.ColorToken.onAccent.opacity(0.82) : DS.ColorToken.fgSecondary)
                     .lineLimit(2)
             }
             .padding(.horizontal, DS.Space.x2_5)
@@ -694,7 +694,7 @@ private struct RecorderPrivacyQuickAccessView: View {
             .frame(maxWidth: .infinity, alignment: .leading)
             .background(
                 RoundedRectangle(cornerRadius: DS.Radius.md, style: .continuous)
-                    .fill(isSelected ? DS.ColorToken.black : .clear)
+                    .fill(isSelected ? DS.ColorToken.accentPrimary : .clear)
             )
             .overlay(
                 RoundedRectangle(cornerRadius: DS.Radius.md, style: .continuous)
