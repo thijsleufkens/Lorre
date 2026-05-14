@@ -6,7 +6,7 @@ import PackageDescription
 let package = Package(
     name: "Lorre",
     platforms: [
-        .macOS(.v14)
+        .macOS(.v15)
     ],
     products: [
         .executable(name: "Lorre", targets: ["Lorre"])
