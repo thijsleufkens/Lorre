@@ -18,8 +18,3 @@ struct SettingsView: View {
         .frame(minHeight: 380)
     }
 }
-
-// Placeholder stubs — replaced by dedicated files in later tasks.
-private struct AboutSettingsTab: View {
-    var body: some View { Form { Text("About — placeholder") }.formStyle(.grouped) }
-}
