@@ -5,9 +5,8 @@ struct CapsLabel: View {
 
     var body: some View {
         Text(text.uppercased())
-            .font(DS.FontStyle.control)
-            .tracking(0.8)
-            .foregroundStyle(DS.ColorToken.fgSecondary)
-            .textCase(.uppercase)
+            .font(DS.FontStyle.kicker)
+            .tracking(1.5)
+            .foregroundStyle(DS.ColorToken.accentPrimary)
     }
 }

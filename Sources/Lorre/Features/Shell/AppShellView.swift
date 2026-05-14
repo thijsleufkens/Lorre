@@ -133,22 +133,22 @@ private struct ActiveRecordingBadge: View {
     let label: String
 
     var body: some View {
-        HStack(alignment: .center, spacing: 6) {
+        HStack(spacing: 6) {
             Circle()
-                .fill(DS.ColorToken.white.opacity(0.92))
+                .fill(DS.ColorToken.accentLive)
                 .frame(width: 6, height: 6)
-
             Text(label)
-                .font(DS.FontStyle.control)
-                .foregroundStyle(DS.ColorToken.white)
-                .lineLimit(1)
-                .fixedSize(horizontal: true, vertical: false)
+                .font(DS.FontStyle.kicker)
+                .tracking(1.5)
+                .foregroundStyle(DS.ColorToken.accentLive)
         }
         .padding(.horizontal, DS.Space.x2)
-        .padding(.vertical, 6)
+        .padding(.vertical, 4)
         .background(
-            Capsule(style: .continuous)
-                .fill(DS.ColorToken.black)
+            Capsule().fill(DS.ColorToken.accentLive.opacity(0.10))
+        )
+        .overlay(
+            Capsule().stroke(DS.ColorToken.accentLive.opacity(0.35), lineWidth: 1)
         )
     }
 }
@@ -181,11 +181,18 @@ private struct AppBannerView: View {
                     .font(.system(size: 11, weight: .semibold))
                     .foregroundStyle(DS.ColorToken.fgSecondary)
             }
-            .buttonStyle(.plain)
+            .buttonStyle(SecondaryControlButtonStyle())
         }
         .padding(DS.Space.x3)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .dsPanelSurface(alt: true, cornerRadius: DS.Radius.md)
+        .background(
+            RoundedRectangle(cornerRadius: DS.Radius.md, style: .continuous)
+                .fill(DS.ColorToken.bgPanelAlt)
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: DS.Radius.md, style: .continuous)
+                .stroke(DS.ColorToken.borderSoft, lineWidth: 1)
+        )
+        .dsSurfaceShadow()
     }
 
     private var iconName: String {
