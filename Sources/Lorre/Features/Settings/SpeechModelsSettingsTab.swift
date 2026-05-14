@@ -129,7 +129,7 @@ struct SpeechModelsSettingsTab: View {
     @ViewBuilder
     private var modelRegistryRows: some View {
         LabeledContent("Registry") {
-            Text(viewModel.isCustomModelRegistryConfigured ? "Custom" : "Default (Hugging Face)")
+            Text(viewModel.modelRegistrySummaryLabel)
                 .foregroundStyle(.secondary)
         }
 
@@ -168,6 +168,14 @@ struct SpeechModelsSettingsTab: View {
             Text(viewModel.modelPreparationDetailLine)
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.trailing)
+        }
+
+        if !viewModel.fluidAudioStatus.isEmpty {
+            LabeledContent("FluidAudio") {
+                Text(viewModel.fluidAudioStatus)
+                    .font(.system(.callout, design: .monospaced))
+                    .foregroundStyle(.secondary)
+            }
         }
 
         Button(buttonLabel) {
