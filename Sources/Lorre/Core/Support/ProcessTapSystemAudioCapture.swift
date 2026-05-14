@@ -116,6 +116,13 @@ final class ProcessTapSystemAudioCapture: @unchecked Sendable {
         logger.info("ProcessTapSystemAudioCapture stopped")
     }
 
+    /// Returns the latest write-failure message from the underlying writer, or nil if none.
+    /// Matches the contract of `SystemAudioCaptureBox.failure()` so the recording service
+    /// can poll the same way regardless of capture backend.
+    func writeFailure() -> String? {
+        lock.withLock { writer?.failureMessage() }
+    }
+
     // MARK: - Deinit
 
     deinit {
