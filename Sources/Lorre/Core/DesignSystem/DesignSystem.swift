@@ -3,26 +3,45 @@ import SwiftUI
 
 enum DS {
     enum ColorToken {
-        static let bgApp = Color(hex: 0xFFFFFF)
-        static let bgPanel = Color(hex: 0xF6F6F4)
-        static let bgPanelAlt = Color(hex: 0xFAFAF8)
-        static let fgPrimary = Color(hex: 0x111111)
-        static let fgSecondary = Color(hex: 0x616161)
-        static let fgTertiary = Color(hex: 0x8C8C8C)
-        static let borderSoft = Color(hex: 0xDDDDDD)
-        static let borderStrong = Color(hex: 0xBDBDBD)
-        static let fieldBg = Color(hex: 0xFFFFFF)
-        static let fieldBorder = Color(hex: 0xDDDDDD)
-        static let fieldText = Color(hex: 0x000000)
-        static let fieldPlaceholder = Color(hex: 0x616161)
-        static let chipBg = Color(hex: 0xF6F6F4)
-        static let chipBorder = Color(hex: 0xDDDDDD)
+        // Canvas
+        static let bgApp = Color.dynamic(light: Color(hex: 0xF1EDE2), dark: Color(hex: 0x0E1411))
+        static let bgPanel = Color.dynamic(light: Color(hex: 0xE5DECB), dark: Color(hex: 0x0A0F0C))
+        static let bgPanelAlt = Color.dynamic(light: Color(hex: 0xFFFFFF), dark: Color(hex: 0x131B17))
+
+        // Foreground
+        static let fgPrimary = Color.dynamic(light: Color(hex: 0x1F2A24), dark: Color(hex: 0xE5DECB))
+        static let fgSecondary = Color.dynamic(light: Color(hex: 0x6F7A6A), dark: Color(hex: 0x7A8576))
+        static let fgTertiary = Color.dynamic(light: Color(hex: 0x8A937F), dark: Color(hex: 0x5C6657))
+
+        // Accent
+        static let accentPrimary = Color.dynamic(light: Color(hex: 0x4A5D44), dark: Color(hex: 0x8FA688))
+        static let accentLive = Color.dynamic(light: Color(hex: 0xCB6F4E), dark: Color(hex: 0xE08667))
+        static let serifInk = Color.dynamic(light: Color(hex: 0x4A5D44), dark: Color(hex: 0x8FA688))
+
+        // Borders
+        static let borderSoft = Color.dynamic(light: Color(hex: 0xD8CFB9), dark: Color(hex: 0x1F2A22))
+        static let borderStrong = Color.dynamic(light: Color(hex: 0xC2C9B5), dark: Color(hex: 0x2A372D))
+
+        // Field surfaces
+        static let fieldBg = bgPanelAlt
+        static let fieldBorder = borderSoft
+        static let fieldText = fgPrimary
+        static let fieldPlaceholder = fgSecondary
+
+        // Chip surfaces
+        static let chipBg = bgPanel
+        static let chipBorder = borderSoft
+
+        // Utility (on-accent text colors — used by PillButtonStyle)
+        static let onAccent = bgApp
         static let black = Color(hex: 0x111111)
         static let white = Color(hex: 0xFFFFFF)
-        static let statusReady = Color(hex: 0x2E7D32)
-        static let statusPreparing = Color(hex: 0x9A6A00)
-        static let statusError = Color(hex: 0xB3261E)
-        static let statusIdle = Color(hex: 0x8C8C8C)
+
+        // Status
+        static let statusReady = accentPrimary
+        static let statusPreparing = Color.dynamic(light: Color(hex: 0xB8893A), dark: Color(hex: 0xC29B3E))
+        static let statusError = Color.dynamic(light: Color(hex: 0xB33F2A), dark: Color(hex: 0xE08667))
+        static let statusIdle = fgTertiary
     }
 
     enum Radius {
