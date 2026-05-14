@@ -284,3 +284,163 @@ A coherent slice that lands the new product focus:
 Together these turn Lorre into a transcription utility that quietly records
 the right meetings, produces a high-quality transcript, and hands it off to
 whatever AI tool the user already uses to think.
+
+---
+
+## Regression risks and mitigations
+
+Before picking up any item above, weigh it against the existing surface area.
+The codebase has a few sensitive seams - persistence schemas with custom
+`Codable`, a tight recording/processing pipeline, and a speaker-identity
+layer that propagates into exports. The notes below call out where new work
+is most likely to break existing behavior, and the mitigations to require
+from the start.
+
+### Highest risk
+
+**Persistence schemas (`SessionManifest`, `TranscriptDocument`, `AppSettings`)**
+
+Each type has a hand-written `init(from decoder:)` using `decodeIfPresent`
+with defaults. Every new field added by items in Themes 2, 4, 8 and 9
+(bookmarks, versions, attendees, per-folder vocab, privacy levels, schema
+metadata) must follow that pattern or existing sessions stop loading.
+`AppSettings.schemaVersion` is already at 2, `TranscriptDocument` at 1;
+`SessionManifest` has no version field yet and should grow one before any
+non-additive change.
+
+- *Mitigation:* require a fixture-based migration test for every schema
+  change. The existing `Tests/` target is a good home. Bump `schemaVersion`
+  on non-additive edits and document the migration inline.
+
+**Audio pipeline and live preview**
+
+- Auto-record (Theme 1) starts a session while Zoom / Teams may hold the
+  mic exclusively or apply their own voice processing. The recording can
+  succeed but capture silence or distorted audio. A pre-flight check helps
+  but adds latency that may clip the first few words.
+- Noise suppression (Theme 6) changes the signal that reaches Parakeet,
+  which was trained on relatively clean audio. Aggressive
+  `AVAudioUnitVoiceProcessing` can *lower* transcription quality.
+- Pause / resume (Theme 5) has no native `AVAudioFile` support. Splicing
+  stems or buffer-flushing risks audio / transcript timestamp drift and
+  can break the `FluidAudioLiveStreamingRecognizer` state machine.
+- Loudness normalization on export is one-way and can make system-audio
+  unexpectedly loud.
+
+- *Mitigations:* keep noise suppression opt-in with an A/B accuracy check
+  on a fixture corpus before defaulting it on; treat pause/resume as a
+  stop-and-start-new-stem internally to avoid state-machine changes; gate
+  every auto-record path through the same pre-flight as manual recording.
+
+**Recording lifecycle in auto-record (Theme 1)**
+
+- Calendar signal, process detection, and manual start can fire together
+  and spawn duplicate sessions or overwrite a just-started one.
+- Smart-stop on "call ended" can truncate audio if the user keeps talking
+  after the conferencing app exits the call state.
+- Polling `NSWorkspace.runningApplications` or audio routing costs battery
+  and can keep mic / screen-recording permissions hot even when not
+  recording.
+- Screen recording permission for system audio is a separate gate; an
+  auto-start without that check produces a recording with no system audio
+  and the user only notices afterwards.
+
+- *Mitigations:* a single `startRecording` entry point that debounces
+  signals; a grace period on smart-stop with an audio-activity check; a
+  permission preflight before the auto-record toast even appears.
+
+**Speaker auto-match (Theme 3)**
+
+Wrong auto-assignment to a `KnownSpeaker` propagates straight into
+exports, the watch folder, and the MCP server, so downstream tools get
+mislabeled data silently.
+
+- *Mitigations:* require a confirm step above a defined similarity
+  threshold; log every automatic decision (reuse `LocalMetricsLogger`)
+  so wrong matches are traceable; make profile merge / split reversible
+  by retaining the pre-merge embeddings.
+
+**Export schema lock-in (Theme 8)**
+
+Once Claude Code, Cowork, or the MCP server depend on the JSON shape,
+breaking changes hurt. Watch-folder writes that are not atomic let
+downstream tools read half-written files.
+
+- *Mitigations:* ship the JSON export with an explicit `schemaVersion`
+  and a short documented schema from day one; commit to additive-only
+  changes within a major version; route every export through
+  `AtomicFileWriter` (it already exists for session/transcript writes);
+  bind the MCP server to localhost only and keep it read-only in v1.
+
+### Medium risk
+
+**Full-text search (Theme 4)**
+
+An index that drifts out of sync with edits causes "I searched and Maria
+isn't there but she is" bugs. CoreSpotlight integration leaks transcript
+content into system search.
+
+- *Mitigations:* rebuild-on-launch path plus incremental updates on every
+  transcript edit; keep CoreSpotlight indexing opt-in (sqlite FTS5 by
+  default) to avoid surprising users who chose Lorre for privacy.
+
+**Floating HUD and menu bar (Theme 5)**
+
+- `NSPanel` over full-screen conferencing apps needs the right activation
+  policy or it steals focus from Zoom controls.
+- Menu bar quick-record plus the main-window record button creates two
+  paths into `AppViewModel.startRecording` and risks duplicate sessions.
+
+- *Mitigations:* one shared command target in `AppViewModel`; explicit UI
+  tests for HUD focus behavior against full-screen apps.
+
+**Privacy mode levels (Theme 9)**
+
+Splitting the current single bool into multiple toggles requires a
+migration that maps the old state to the most conservative new
+combination. Retention auto-delete is destructive and easy to get wrong
+on sessions with missing `recordedAt`.
+
+- *Mitigations:* default migration biases toward retention (keep more,
+  delete less); auto-delete moves files to a local trash with a 30-day
+  reversal window before unlinking; unit tests on edge cases
+  (missing dates, in-progress sessions, sessions with no transcript).
+
+### Lower risk
+
+**Translation (Theme 7)**
+
+Apple Translation requires macOS 14.4+; the project minimum is macOS 14.0.
+
+- *Mitigation:* gate the feature with `if #available` and surface a clear
+  "requires macOS 14.4" note in settings.
+
+**Find / replace and diarization touch-ups (Theme 2)**
+
+Splitting segments without updating `tokenTimings` produces wrong
+timestamps in SRT / VTT and breaks tap-to-play on a word.
+
+- *Mitigation:* every split / merge operation must rebuild
+  `tokenTimings` consistently; cover with unit tests that round-trip a
+  session through edit and export.
+
+### Cross-cutting practices to adopt up front
+
+- **Migration test suite.** A fixture per schema version, decoded by the
+  current code, asserted to match expected values. Adds a hard wall
+  against silent data loss.
+- **`AtomicFileWriter` everywhere.** Not just `transcript.json` and
+  `session.json` - also Markdown export, JSON export, watch-folder
+  mirror, and any new on-disk artifact.
+- **Feature flags in `AppSettings` for risky features** (auto-record,
+  noise suppression, CoreSpotlight indexing). Default off, so a
+  regression on a new path cannot harm existing users.
+- **One `startRecording` code path.** Auto-record, menu bar, hotkey, URL
+  scheme, and the main window all funnel through the same function
+  with the same preflight, debounce, and permission checks.
+- **Snapshot tests on the JSON export schema.** Any accidental field
+  rename or removal turns red before it ships.
+- **Confirmation thresholds and audit logs for automatic decisions**
+  (speaker auto-match, auto-start, auto-stop). Reuse
+  `LocalMetricsLogger` so the user can inspect what Lorre decided on
+  their behalf.
