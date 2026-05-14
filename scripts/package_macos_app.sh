@@ -100,7 +100,7 @@ cat > "$CONTENTS_DIR/Info.plist" <<PLIST
   <key>LSMinimumSystemVersion</key>
   <string>$MINIMUM_MACOS_VERSION</string>
   <key>NSMicrophoneUsageDescription</key>
-  <string>Lorre needs microphone access to record audio locally.</string>
+  <string>Lorre transcribes audio locally — your microphone, system audio from other apps, or both.</string>
   <key>NSHighResolutionCapable</key>
   <true/>
 </dict>
