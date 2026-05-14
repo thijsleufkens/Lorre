@@ -101,24 +101,6 @@ extension Color {
     }
 }
 
-struct SecondaryControlButtonStyle: ButtonStyle {
-    func makeBody(configuration: Configuration) -> some View {
-        configuration.label
-            .font(DS.FontStyle.control)
-            .foregroundStyle(DS.ColorToken.fgPrimary)
-            .padding(.horizontal, DS.Space.x3)
-            .padding(.vertical, DS.Space.x2)
-            .background(
-                RoundedRectangle(cornerRadius: DS.Radius.sm, style: .continuous)
-                    .fill(configuration.isPressed ? DS.ColorToken.bgPanel : DS.ColorToken.bgPanelAlt)
-            )
-            .overlay(
-                RoundedRectangle(cornerRadius: DS.Radius.sm, style: .continuous)
-                    .stroke(DS.ColorToken.borderStrong, lineWidth: 1)
-            )
-    }
-}
-
 struct PrimaryControlButtonStyle: ButtonStyle {
     @Environment(\.isEnabled) private var isEnabled
 
@@ -126,24 +108,41 @@ struct PrimaryControlButtonStyle: ButtonStyle {
         let pressed = configuration.isPressed && isEnabled
         configuration.label
             .font(DS.FontStyle.control)
-            .foregroundStyle(
-                isEnabled
-                    ? DS.ColorToken.white.opacity(pressed ? 0.9 : 1)
-                    : DS.ColorToken.fgSecondary
-            )
-            .padding(.horizontal, DS.Space.x3)
-            .padding(.vertical, DS.Space.x2)
+            .foregroundStyle(isEnabled ? DS.ColorToken.onAccent : DS.ColorToken.fgTertiary)
+            .padding(.horizontal, 18)
+            .padding(.vertical, 10)
             .background(
-                RoundedRectangle(cornerRadius: DS.Radius.sm, style: .continuous)
+                Capsule(style: .continuous)
                     .fill(
                         isEnabled
-                            ? DS.ColorToken.black.opacity(pressed ? 0.92 : 1)
+                            ? DS.ColorToken.accentPrimary.opacity(pressed ? 0.85 : 1)
                             : DS.ColorToken.bgPanelAlt
                     )
             )
             .overlay(
-                RoundedRectangle(cornerRadius: DS.Radius.sm, style: .continuous)
-                    .stroke(isEnabled ? .clear : DS.ColorToken.borderStrong, lineWidth: 1)
+                Capsule(style: .continuous)
+                    .stroke(isEnabled ? Color.clear : DS.ColorToken.borderSoft, lineWidth: 1)
+            )
+    }
+}
+
+struct SecondaryControlButtonStyle: ButtonStyle {
+    @Environment(\.isEnabled) private var isEnabled
+
+    func makeBody(configuration: Configuration) -> some View {
+        let pressed = configuration.isPressed && isEnabled
+        configuration.label
+            .font(DS.FontStyle.control)
+            .foregroundStyle(isEnabled ? DS.ColorToken.fgPrimary : DS.ColorToken.fgTertiary)
+            .padding(.horizontal, 18)
+            .padding(.vertical, 10)
+            .background(
+                Capsule(style: .continuous)
+                    .fill(pressed ? DS.ColorToken.bgPanel : Color.clear)
+            )
+            .overlay(
+                Capsule(style: .continuous)
+                    .stroke(DS.ColorToken.borderSoft, lineWidth: 1)
             )
     }
 }
