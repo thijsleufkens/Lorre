@@ -132,18 +132,6 @@ final class ProcessTapSystemAudioCapture: @unchecked Sendable {
         var createdAggregateID: AudioObjectID? = nil
         var createdProcID: AudioDeviceIOProcID? = nil
 
-        // Writer file is always created first so the CAF exists on disk
-        // regardless of whether the tap activates. Downstream combine logic
-        // expects the file at `outputURL` — an empty header file is treated
-        // as a silent system stem.
-        let writerFormat = AVAudioFormat(
-            commonFormat: .pcmFormatFloat32,
-            sampleRate: 48_000,
-            channels: 2,
-            interleaved: false
-        )!
-        let writer = try ProcessTapAudioWriter(outputURL: outputURL, format: writerFormat)
-
         do {
             // ── Step 1: Enumerate process AudioObjectIDs, exclude self ───────
             // On macOS 15.7.3 the `stereoGlobalTapButExcludeProcesses`
@@ -154,18 +142,6 @@ final class ProcessTapSystemAudioCapture: @unchecked Sendable {
             // list. Functionally equivalent, but goes through the working
             // CoreAudio code path.
             let (_, otherProcessIDs) = try enumerateProcessAudioObjectIDs()
-
-            // No process is currently outputting audio. Recording proceeds
-            // without a tap — the writer file stays at header-only size and
-            // the system stem is treated as silence. Mic capture (if any) is
-            // unaffected.
-            if otherProcessIDs.isEmpty {
-                logger.warning("No process is currently producing audio; system audio stem will be silent for this recording.")
-                lock.withLock {
-                    self.writer = writer
-                }
-                return StartResult(outputURL: outputURL, startedAt: Date())
-            }
 
             // ── Step 2: Create CATapDescription ──────────────────────────────
             // Setting the UUID explicitly lets us reference the same value in
@@ -231,7 +207,18 @@ final class ProcessTapSystemAudioCapture: @unchecked Sendable {
             }
             createdAggregateID = aggregateID
 
-            // ── Step 7: Install the I/O proc ──────────────────────────────────
+            // ── Step 7: Create the output file writer ─────────────────────────
+            // Writer format matches the previous SCStream-based writer exactly:
+            // Float32, 48 kHz, 2-channel, non-interleaved.
+            let writerFormat = AVAudioFormat(
+                commonFormat: .pcmFormatFloat32,
+                sampleRate: 48_000,
+                channels: 2,
+                interleaved: false
+            )!
+            let writer = try ProcessTapAudioWriter(outputURL: outputURL, format: writerFormat)
+
+            // ── Step 8: Install the I/O proc ──────────────────────────────────
             var procID: AudioDeviceIOProcID? = nil
             let ioStatus = AudioDeviceCreateIOProcIDWithBlock(
                 &procID,
@@ -278,7 +265,7 @@ final class ProcessTapSystemAudioCapture: @unchecked Sendable {
             }
             createdProcID = procID
 
-            // ── Step 8: Start the device ──────────────────────────────────────
+            // ── Step 9: Start the device ──────────────────────────────────────
             let startStatus = AudioDeviceStart(aggregateID, procID)
             guard startStatus == noErr else {
                 throw LorreError.recordingStartFailed(
@@ -289,7 +276,7 @@ final class ProcessTapSystemAudioCapture: @unchecked Sendable {
             let startedAt = Date()
             logger.info("ProcessTapSystemAudioCapture started — writing to \(outputURL.lastPathComponent)")
 
-            // ── Step 9: Commit to stored state ────────────────────────────────
+            // ── Step 10: Commit to stored state ───────────────────────────────
             lock.withLock {
                 self.tapID = tapID
                 self.aggregateID = aggregateID
