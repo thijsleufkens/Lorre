@@ -17,7 +17,6 @@ struct TranscriptSegmentRowView: View {
 
     @State private var draftText: String = ""
     @State private var showSpeakerPopover = false
-    @State private var isRowHovered = false
     @FocusState private var isTextFocused: Bool
 
     init(
@@ -186,9 +185,6 @@ struct TranscriptSegmentRowView: View {
             guard canCuePlayback else { return }
             onSeekRequested()
         }
-        .onHover { hovering in
-            isRowHovered = hovering
-        }
     }
 
     private func commitIfNeeded() {
@@ -198,7 +194,7 @@ struct TranscriptSegmentRowView: View {
     }
 
     private var shouldShowMetadataRow: Bool {
-        isPlaybackActive || segment.isEdited || (showsConfidence && segment.confidence != nil)
+        isPlaybackActive || (showsConfidence && segment.confidence != nil) || segment.isEdited
     }
 }
 

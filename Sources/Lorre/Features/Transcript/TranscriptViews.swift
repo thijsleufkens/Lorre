@@ -83,7 +83,7 @@ struct TranscriptStageView: View {
                 .dsPanelSurface(cornerRadius: DS.Radius.lg)
             } else {
                 VStack(alignment: .leading, spacing: DS.Space.x2) {
-                    VStack(alignment: .leading, spacing: 4) {
+                    VStack(alignment: .leading, spacing: DS.Space.x1) {
                         Text("— Transcript")
                             .font(DS.FontStyle.sectionLabel)
                             .foregroundStyle(DS.ColorToken.serifInk)
