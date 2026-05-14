@@ -38,7 +38,9 @@ struct SpeakerRecognitionQuickAccessView: View {
 
     private var titleLabel: some View {
         HStack(spacing: DS.Space.x2) {
-            CapsLabel(text: "Speaker Recognition")
+            Text("— Speaker Recognition")
+                .font(DS.FontStyle.sectionLabel)
+                .foregroundStyle(DS.ColorToken.serifInk)
             Text(viewModel.isSpeakerDiarizationEnabled ? "ON" : "OFF")
                 .font(DS.FontStyle.control)
                 .foregroundStyle(DS.ColorToken.fgSecondary)
@@ -114,7 +116,9 @@ struct KnownSpeakerLibraryQuickAccessView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: DS.Space.x2) {
             HStack(alignment: .firstTextBaseline, spacing: DS.Space.x2) {
-                CapsLabel(text: "Known Speakers")
+                Text("— Known Speakers")
+                    .font(DS.FontStyle.sectionLabel)
+                    .foregroundStyle(DS.ColorToken.serifInk)
                 Spacer()
                 Text("\(viewModel.knownSpeakers.count)")
                     .font(DS.FontStyle.mono)
@@ -164,14 +168,7 @@ struct KnownSpeakerLibraryQuickAccessView: View {
             }
         }
         .padding(DS.Space.x2_5)
-        .background(
-            RoundedRectangle(cornerRadius: DS.Radius.sm, style: .continuous)
-                .fill(DS.ColorToken.bgPanelAlt)
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: DS.Radius.sm, style: .continuous)
-                .stroke(DS.ColorToken.borderSoft, lineWidth: 1)
-        )
+        .dsPanelSurface(cornerRadius: DS.Radius.sm)
     }
 
     @ViewBuilder
@@ -214,14 +211,7 @@ struct KnownSpeakerLibraryQuickAccessView: View {
         }
         .padding(.horizontal, DS.Space.x2)
         .padding(.vertical, DS.Space.x2)
-        .background(
-            RoundedRectangle(cornerRadius: DS.Radius.sm, style: .continuous)
-                .fill(DS.ColorToken.bgPanel)
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: DS.Radius.sm, style: .continuous)
-                .stroke(DS.ColorToken.borderSoft, lineWidth: 1)
-        )
+        .dsPanelSurface(alt: true, cornerRadius: DS.Radius.sm)
     }
 
     private func referenceClipSummary(for speaker: KnownSpeaker) -> String {

@@ -35,24 +35,54 @@ struct RecorderConsoleView: View {
 
     private var recordingConsole: some View {
         VStack(alignment: .leading, spacing: DS.Space.x4) {
-            HStack(alignment: .center, spacing: DS.Space.x4) {
-                VStack(alignment: .leading, spacing: DS.Space.x1) {
-                    CapsLabel(text: "Record")
-                    Text(viewModel.isStoppingRecording ? "Stopping…" : "Recording \(viewModel.selectedRecordingSource.label)")
-                        .font(DS.FontStyle.panelTitle)
-                        .foregroundStyle(DS.ColorToken.fgPrimary)
+            // Pattern B — live indicator + hero timer panel
+            VStack(alignment: .leading, spacing: DS.Space.x2) {
+                HStack(spacing: DS.Space.x2) {
+                    Circle()
+                        .fill(DS.ColorToken.accentLive)
+                        .frame(width: 12, height: 12)
+                        .shadow(color: DS.ColorToken.accentLive.opacity(0.35), radius: 4, x: 0, y: 0)
+                    Text(viewModel.isStoppingRecording ? "STOPPING" : "RECORDING")
+                        .font(DS.FontStyle.kicker)
+                        .tracking(1.5)
+                        .foregroundStyle(DS.ColorToken.accentLive)
+                    Spacer()
+                    Button("Stop Recording") {
+                        viewModel.stopRecordingTapped()
+                    }
+                    .buttonStyle(PrimaryControlButtonStyle())
+                    .disabled(viewModel.isStoppingRecording)
+
+                    Button("Cancel Recording") {
+                        isShowingCancelRecordingConfirmation = true
+                    }
+                    .buttonStyle(SecondaryControlButtonStyle())
+                    .disabled(viewModel.isStoppingRecording)
                 }
-
-                Spacer()
-
                 Text(Formatters.duration(viewModel.recordingElapsedSeconds))
                     .font(DS.FontStyle.timer)
                     .foregroundStyle(DS.ColorToken.fgPrimary)
+                    .monospacedDigit()
             }
+            .padding(DS.Space.x4)
+            .background(
+                RoundedRectangle(cornerRadius: DS.Radius.lg, style: .continuous)
+                    .fill(DS.ColorToken.bgPanelAlt)
+            )
+            .dsPanelShadow()
 
-            Text("Audio capture is stored locally. Stop to create a session and begin transcript processing.")
-                .font(DS.FontStyle.body)
-                .foregroundStyle(DS.ColorToken.fgSecondary)
+            // Pattern A — kicker + source label
+            VStack(alignment: .leading, spacing: 4) {
+                Text("— Recorder")
+                    .font(DS.FontStyle.sectionLabel)
+                    .foregroundStyle(DS.ColorToken.serifInk)
+                Text("Recording \(viewModel.selectedRecordingSource.label)")
+                    .font(DS.FontStyle.panelTitle)
+                    .foregroundStyle(DS.ColorToken.fgPrimary)
+                Text("Audio capture is stored locally. Stop to create a session and begin transcript processing.")
+                    .font(DS.FontStyle.helper)
+                    .foregroundStyle(DS.ColorToken.fgSecondary)
+            }
 
             if viewModel.isDeleteAudioAfterTranscriptionEnabled {
                 Text("Privacy mode is on. After the transcript is saved, Lorre will delete the source audio and keep the transcript and exports.")
@@ -67,23 +97,9 @@ struct RecorderConsoleView: View {
             if viewModel.isLiveTranscriptionSupported && viewModel.isLiveTranscriptionEnabled {
                 LiveTranscriptPreviewCard(viewModel: viewModel)
             }
-
-            HStack(spacing: DS.Space.x2) {
-                Button("Stop Recording") {
-                    viewModel.stopRecordingTapped()
-                }
-                .buttonStyle(PrimaryControlButtonStyle())
-                .disabled(viewModel.isStoppingRecording)
-
-                Button("Cancel Recording") {
-                    isShowingCancelRecordingConfirmation = true
-                }
-                .buttonStyle(SecondaryControlButtonStyle())
-                .disabled(viewModel.isStoppingRecording)
-            }
         }
         .padding(DS.Space.x4)
-        .frame(maxWidth: .infinity, alignment: .leading)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .dsPanelSurface(cornerRadius: DS.Radius.lg)
     }
 
@@ -124,8 +140,10 @@ private struct RecorderSetupHeaderView: View {
     }
 
     private var titleBlock: some View {
-        VStack(alignment: .leading, spacing: DS.Space.x1_5) {
-            CapsLabel(text: "Recorder")
+        VStack(alignment: .leading, spacing: 4) {
+            Text("— Recorder")
+                .font(DS.FontStyle.sectionLabel)
+                .foregroundStyle(DS.ColorToken.serifInk)
             Text("Arm the capture, then start.")
                 .font(DS.FontStyle.panelTitle)
                 .foregroundStyle(DS.ColorToken.fgPrimary)
@@ -184,23 +202,23 @@ private struct RecorderStartDockView: View {
             HStack(spacing: DS.Space.x2) {
                 ZStack {
                     Circle()
-                        .stroke(DS.ColorToken.white.opacity(0.34), lineWidth: 1)
+                        .stroke(DS.ColorToken.onAccent.opacity(0.34), lineWidth: 1)
                         .frame(width: 20, height: 20)
 
                     Circle()
-                        .fill(DS.ColorToken.white)
+                        .fill(DS.ColorToken.onAccent)
                         .frame(width: 7, height: 7)
                 }
 
                 Text("Start Recording")
                     .font(.system(size: 14, weight: .semibold))
-                    .foregroundStyle(DS.ColorToken.white)
+                    .foregroundStyle(DS.ColorToken.onAccent)
 
                 Spacer(minLength: DS.Space.x2)
 
                 Image(systemName: "chevron.right")
                     .font(.system(size: 11, weight: .semibold))
-                    .foregroundStyle(DS.ColorToken.white.opacity(0.76))
+                    .foregroundStyle(DS.ColorToken.onAccent.opacity(0.76))
             }
             .frame(maxWidth: .infinity, alignment: .leading)
             .contentShape(Rectangle())
@@ -333,20 +351,20 @@ private struct RecorderSourceOptionButtonStyle: ButtonStyle {
             VStack(alignment: .leading, spacing: 2) {
                 configuration.label
                     .font(DS.FontStyle.control)
-                    .foregroundStyle(isSelected ? DS.ColorToken.white : DS.ColorToken.fgPrimary)
+                    .foregroundStyle(isSelected ? DS.ColorToken.onAccent : DS.ColorToken.fgPrimary)
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .lineLimit(1)
 
                 Text(detail)
                     .font(DS.FontStyle.helper)
-                    .foregroundStyle(isSelected ? DS.ColorToken.white.opacity(0.82) : DS.ColorToken.fgSecondary)
+                    .foregroundStyle(isSelected ? DS.ColorToken.onAccent.opacity(0.82) : DS.ColorToken.fgSecondary)
                     .lineLimit(1)
             }
 
             if isSelected {
                 Image(systemName: "checkmark")
                     .font(.system(size: 11, weight: .semibold))
-                    .foregroundStyle(DS.ColorToken.white)
+                    .foregroundStyle(DS.ColorToken.onAccent)
             }
         }
         .padding(.horizontal, DS.Space.x2_5)
@@ -354,7 +372,7 @@ private struct RecorderSourceOptionButtonStyle: ButtonStyle {
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(
             RoundedRectangle(cornerRadius: DS.Radius.md, style: .continuous)
-                .fill(isSelected ? DS.ColorToken.black.opacity(configuration.isPressed ? 0.92 : 1) : .clear)
+                .fill(isSelected ? DS.ColorToken.accentPrimary.opacity(configuration.isPressed ? 0.92 : 1) : .clear)
         )
         .overlay(
             RoundedRectangle(cornerRadius: DS.Radius.md, style: .continuous)
@@ -378,7 +396,7 @@ private struct RecorderSourceOptionButtonStyle: ButtonStyle {
 
             Image(systemName: iconName)
                 .font(.system(size: 11, weight: .semibold))
-                .foregroundStyle(isSelected ? DS.ColorToken.white : DS.ColorToken.fgSecondary)
+                .foregroundStyle(isSelected ? DS.ColorToken.onAccent : DS.ColorToken.fgSecondary)
         }
     }
 }
@@ -396,7 +414,7 @@ private struct RecorderStartActionButtonStyle: ButtonStyle {
                 RoundedRectangle(cornerRadius: DS.Radius.md, style: .continuous)
                     .fill(
                         isEnabled
-                            ? DS.ColorToken.black.opacity(pressed ? 0.92 : 1)
+                            ? DS.ColorToken.accentPrimary.opacity(pressed ? 0.85 : 1)
                             : DS.ColorToken.bgPanelAlt
                     )
             )
@@ -404,7 +422,7 @@ private struct RecorderStartActionButtonStyle: ButtonStyle {
                 RoundedRectangle(cornerRadius: DS.Radius.md, style: .continuous)
                     .stroke(
                         isEnabled
-                            ? DS.ColorToken.white.opacity(0.08)
+                            ? DS.ColorToken.onAccent.opacity(0.08)
                             : DS.ColorToken.borderStrong,
                         lineWidth: 1
                     )
@@ -656,19 +674,19 @@ private struct RecorderPrivacyQuickAccessView: View {
                 HStack(spacing: DS.Space.x1_5) {
                     Text(title)
                         .font(DS.FontStyle.control)
-                        .foregroundStyle(isSelected ? DS.ColorToken.white : DS.ColorToken.fgPrimary)
+                        .foregroundStyle(isSelected ? DS.ColorToken.onAccent : DS.ColorToken.fgPrimary)
                         .lineLimit(1)
                     Spacer()
                     if isSelected {
                         Image(systemName: "checkmark")
                             .font(.system(size: 11, weight: .semibold))
-                            .foregroundStyle(DS.ColorToken.white)
+                            .foregroundStyle(DS.ColorToken.onAccent)
                     }
                 }
 
                 Text(detail)
                     .font(DS.FontStyle.helper)
-                    .foregroundStyle(isSelected ? DS.ColorToken.white.opacity(0.82) : DS.ColorToken.fgSecondary)
+                    .foregroundStyle(isSelected ? DS.ColorToken.onAccent.opacity(0.82) : DS.ColorToken.fgSecondary)
                     .lineLimit(2)
             }
             .padding(.horizontal, DS.Space.x2_5)
@@ -676,7 +694,7 @@ private struct RecorderPrivacyQuickAccessView: View {
             .frame(maxWidth: .infinity, alignment: .leading)
             .background(
                 RoundedRectangle(cornerRadius: DS.Radius.md, style: .continuous)
-                    .fill(isSelected ? DS.ColorToken.black : .clear)
+                    .fill(isSelected ? DS.ColorToken.accentPrimary : .clear)
             )
             .overlay(
                 RoundedRectangle(cornerRadius: DS.Radius.md, style: .continuous)
@@ -950,13 +968,17 @@ struct ProcessingPipelineView: View {
             )
 
             VStack(alignment: .leading, spacing: DS.Space.x3) {
-                CapsLabel(text: "Processing Pipeline")
-                Text(session.processing.progressPhase?.label ?? "Processing")
-                    .font(DS.FontStyle.panelTitle)
-                    .foregroundStyle(DS.ColorToken.fgPrimary)
-                Text(session.processing.progressLabel ?? "Working on transcript…")
-                    .font(DS.FontStyle.body)
-                    .foregroundStyle(DS.ColorToken.fgSecondary)
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("— Processing")
+                        .font(DS.FontStyle.sectionLabel)
+                        .foregroundStyle(DS.ColorToken.serifInk)
+                    Text(session.processing.progressPhase?.label ?? "Processing")
+                        .font(DS.FontStyle.panelTitle)
+                        .foregroundStyle(DS.ColorToken.fgPrimary)
+                    Text(session.processing.progressLabel ?? "Working on transcript…")
+                        .font(DS.FontStyle.helper)
+                        .foregroundStyle(DS.ColorToken.fgSecondary)
+                }
 
                 IndexRailView(mode: .progress(session.processing.progressFraction ?? 0.1), height: 10)
                     .frame(maxWidth: .infinity)

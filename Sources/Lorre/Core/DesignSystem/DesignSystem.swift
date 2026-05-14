@@ -1,33 +1,53 @@
+import AppKit
 import SwiftUI
 
 enum DS {
     enum ColorToken {
-        static let bgApp = Color(hex: 0xFFFFFF)
-        static let bgPanel = Color(hex: 0xF6F6F4)
-        static let bgPanelAlt = Color(hex: 0xFAFAF8)
-        static let fgPrimary = Color(hex: 0x111111)
-        static let fgSecondary = Color(hex: 0x616161)
-        static let fgTertiary = Color(hex: 0x8C8C8C)
-        static let borderSoft = Color(hex: 0xDDDDDD)
-        static let borderStrong = Color(hex: 0xBDBDBD)
-        static let fieldBg = Color(hex: 0xFFFFFF)
-        static let fieldBorder = Color(hex: 0xDDDDDD)
-        static let fieldText = Color(hex: 0x000000)
-        static let fieldPlaceholder = Color(hex: 0x616161)
-        static let chipBg = Color(hex: 0xF6F6F4)
-        static let chipBorder = Color(hex: 0xDDDDDD)
+        // Canvas
+        static let bgApp = Color.dynamic(light: Color(hex: 0xF1EDE2), dark: Color(hex: 0x0E1411))
+        static let bgPanel = Color.dynamic(light: Color(hex: 0xE5DECB), dark: Color(hex: 0x0A0F0C))
+        static let bgPanelAlt = Color.dynamic(light: Color(hex: 0xFFFFFF), dark: Color(hex: 0x131B17))
+
+        // Foreground
+        static let fgPrimary = Color.dynamic(light: Color(hex: 0x1F2A24), dark: Color(hex: 0xE5DECB))
+        static let fgSecondary = Color.dynamic(light: Color(hex: 0x6F7A6A), dark: Color(hex: 0x7A8576))
+        static let fgTertiary = Color.dynamic(light: Color(hex: 0x8A937F), dark: Color(hex: 0x5C6657))
+
+        // Accent
+        static let accentPrimary = Color.dynamic(light: Color(hex: 0x4A5D44), dark: Color(hex: 0x8FA688))
+        static let accentLive = Color.dynamic(light: Color(hex: 0xCB6F4E), dark: Color(hex: 0xE08667))
+        static let serifInk = Color.dynamic(light: Color(hex: 0x4A5D44), dark: Color(hex: 0x8FA688))
+
+        // Borders
+        static let borderSoft = Color.dynamic(light: Color(hex: 0xD8CFB9), dark: Color(hex: 0x1F2A22))
+        static let borderStrong = Color.dynamic(light: Color(hex: 0xC2C9B5), dark: Color(hex: 0x2A372D))
+
+        // Field surfaces
+        static let fieldBg = bgPanelAlt
+        static let fieldBorder = borderSoft
+        static let fieldText = fgPrimary
+        static let fieldPlaceholder = fgSecondary
+
+        // Chip surfaces
+        static let chipBg = bgPanel
+        static let chipBorder = borderSoft
+
+        // Utility (on-accent text colors — used by PillButtonStyle)
+        static let onAccent = bgApp
         static let black = Color(hex: 0x111111)
         static let white = Color(hex: 0xFFFFFF)
-        static let statusReady = Color(hex: 0x2E7D32)
-        static let statusPreparing = Color(hex: 0x9A6A00)
-        static let statusError = Color(hex: 0xB3261E)
-        static let statusIdle = Color(hex: 0x8C8C8C)
+
+        // Status
+        static let statusReady = accentPrimary
+        static let statusPreparing = Color.dynamic(light: Color(hex: 0xB8893A), dark: Color(hex: 0xC29B3E))
+        static let statusError = Color.dynamic(light: Color(hex: 0xB33F2A), dark: Color(hex: 0xE08667))
+        static let statusIdle = fgTertiary
     }
 
     enum Radius {
         static let sm: CGFloat = 8
-        static let md: CGFloat = 12
-        static let lg: CGFloat = 18
+        static let md: CGFloat = 10
+        static let lg: CGFloat = 14
     }
 
     enum Space {
@@ -42,16 +62,26 @@ enum DS {
     }
 
     enum FontStyle {
+        // Brand voice (italic serif)
+        static let wordmark = Font.custom("Iowan Old Style", size: 22).italic()
+        static let sectionLabel = Font.custom("Iowan Old Style", size: 13).italic()
+        static let groupHead = Font.custom("Iowan Old Style", size: 12).italic()
+
+        // UI sans (system SF Pro)
         static let appTitle = Font.system(size: 22, weight: .semibold)
-        static let panelTitle = Font.system(size: 20, weight: .semibold)
-        static let stageStatus = Font.system(size: 14, weight: .medium)
+        static let panelTitle = Font.system(size: 26, weight: .semibold).leading(.tight)
         static let body = Font.system(size: 13, weight: .regular)
         static let bodyStrong = Font.system(size: 13, weight: .semibold)
         static let control = Font.system(size: 12, weight: .semibold)
         static let helper = Font.system(size: 11, weight: .regular)
+        static let kicker = Font.system(size: 11, weight: .semibold)
+        static let stageStatus = kicker
+
+        // Mono (system SF Mono)
+        static let timer = Font.system(size: 56, weight: .medium, design: .monospaced)
+        static let timerCompact = Font.system(size: 18, weight: .semibold, design: .monospaced)
         static let mono = Font.system(size: 11, weight: .regular, design: .monospaced)
         static let monoStrong = Font.system(size: 12, weight: .semibold, design: .monospaced)
-        static let timer = Font.system(size: 18, weight: .semibold, design: .monospaced)
     }
 }
 
@@ -62,23 +92,12 @@ extension Color {
         let b = Double(hex & 0xFF) / 255
         self.init(.sRGB, red: r, green: g, blue: b, opacity: 1)
     }
-}
 
-struct SecondaryControlButtonStyle: ButtonStyle {
-    func makeBody(configuration: Configuration) -> some View {
-        configuration.label
-            .font(DS.FontStyle.control)
-            .foregroundStyle(DS.ColorToken.fgPrimary)
-            .padding(.horizontal, DS.Space.x3)
-            .padding(.vertical, DS.Space.x2)
-            .background(
-                RoundedRectangle(cornerRadius: DS.Radius.sm, style: .continuous)
-                    .fill(configuration.isPressed ? DS.ColorToken.bgPanel : DS.ColorToken.bgPanelAlt)
-            )
-            .overlay(
-                RoundedRectangle(cornerRadius: DS.Radius.sm, style: .continuous)
-                    .stroke(DS.ColorToken.borderStrong, lineWidth: 1)
-            )
+    static func dynamic(light: Color, dark: Color) -> Color {
+        Color(nsColor: NSColor(name: nil) { appearance in
+            let isDark = appearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
+            return NSColor(isDark ? dark : light)
+        })
     }
 }
 
@@ -89,38 +108,87 @@ struct PrimaryControlButtonStyle: ButtonStyle {
         let pressed = configuration.isPressed && isEnabled
         configuration.label
             .font(DS.FontStyle.control)
-            .foregroundStyle(
-                isEnabled
-                    ? DS.ColorToken.white.opacity(pressed ? 0.9 : 1)
-                    : DS.ColorToken.fgSecondary
-            )
-            .padding(.horizontal, DS.Space.x3)
-            .padding(.vertical, DS.Space.x2)
+            .foregroundStyle(isEnabled ? DS.ColorToken.onAccent : DS.ColorToken.fgTertiary)
+            .padding(.horizontal, 18)
+            .padding(.vertical, 10)
             .background(
-                RoundedRectangle(cornerRadius: DS.Radius.sm, style: .continuous)
+                Capsule(style: .continuous)
                     .fill(
                         isEnabled
-                            ? DS.ColorToken.black.opacity(pressed ? 0.92 : 1)
+                            ? DS.ColorToken.accentPrimary.opacity(pressed ? 0.85 : 1)
                             : DS.ColorToken.bgPanelAlt
                     )
             )
             .overlay(
-                RoundedRectangle(cornerRadius: DS.Radius.sm, style: .continuous)
-                    .stroke(isEnabled ? .clear : DS.ColorToken.borderStrong, lineWidth: 1)
+                Capsule(style: .continuous)
+                    .stroke(isEnabled ? Color.clear : DS.ColorToken.borderSoft, lineWidth: 1)
+            )
+    }
+}
+
+struct SecondaryControlButtonStyle: ButtonStyle {
+    @Environment(\.isEnabled) private var isEnabled
+
+    func makeBody(configuration: Configuration) -> some View {
+        let pressed = configuration.isPressed && isEnabled
+        configuration.label
+            .font(DS.FontStyle.control)
+            .foregroundStyle(isEnabled ? DS.ColorToken.fgPrimary : DS.ColorToken.fgTertiary)
+            .padding(.horizontal, 18)
+            .padding(.vertical, 10)
+            .background(
+                Capsule(style: .continuous)
+                    .fill(pressed ? DS.ColorToken.bgPanel : Color.clear)
+            )
+            .overlay(
+                Capsule(style: .continuous)
+                    .stroke(DS.ColorToken.borderSoft, lineWidth: 1)
             )
     }
 }
 
 extension View {
-    func dsPanelSurface(selected: Bool = false, alt: Bool = false, cornerRadius: CGFloat = DS.Radius.md) -> some View {
-        self
+    func dsPanelSurface(
+        selected: Bool = false,
+        alt: Bool = false,
+        cornerRadius: CGFloat = DS.Radius.lg
+    ) -> some View {
+        let fill: Color = {
+            if selected { return DS.ColorToken.bgPanelAlt }
+            return alt ? DS.ColorToken.bgPanel : DS.ColorToken.bgPanelAlt
+        }()
+        return self
             .background(
                 RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-                    .fill(selected ? DS.ColorToken.bgPanel : (alt ? DS.ColorToken.bgPanelAlt : DS.ColorToken.bgPanel))
+                    .fill(fill)
             )
             .overlay(
                 RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
                     .stroke(selected ? DS.ColorToken.borderStrong : DS.ColorToken.borderSoft, lineWidth: 1)
             )
+    }
+
+    func dsActiveAccentBar(isActive: Bool) -> some View {
+        overlay(alignment: .leading) {
+            if isActive {
+                RoundedRectangle(cornerRadius: 1, style: .continuous)
+                    .fill(DS.ColorToken.accentPrimary)
+                    .frame(width: 2)
+                    .padding(.vertical, 4)
+                    .padding(.leading, 1)
+            }
+        }
+    }
+}
+
+extension View {
+    func dsSurfaceShadow() -> some View {
+        shadow(color: Color.black.opacity(0.10), radius: 3, x: 0, y: 1)
+    }
+
+    func dsPanelShadow() -> some View {
+        self
+            .shadow(color: Color.black.opacity(0.07), radius: 24, x: 0, y: 8)
+            .shadow(color: Color.black.opacity(0.04), radius: 3, x: 0, y: 1)
     }
 }

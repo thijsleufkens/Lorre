@@ -15,7 +15,7 @@ struct SearchFieldView: View {
 
                 TextField("Search sessions", text: $text)
                     .textFieldStyle(.plain)
-                    .font(DS.FontStyle.body)
+                    .font(DS.FontStyle.helper)
                     .foregroundStyle(DS.ColorToken.fieldText)
 
                 if !text.isEmpty {

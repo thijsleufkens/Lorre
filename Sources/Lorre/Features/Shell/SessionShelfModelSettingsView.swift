@@ -7,7 +7,9 @@ struct ModelStatusCompactPanelView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: DS.Space.x2) {
             HStack(alignment: .firstTextBaseline, spacing: DS.Space.x2) {
-                CapsLabel(text: "Models")
+                Text("— Models")
+                    .font(DS.FontStyle.sectionLabel)
+                    .foregroundStyle(DS.ColorToken.serifInk)
                 Spacer()
                 statusBadge
                 Button {
@@ -165,7 +167,9 @@ struct ModelStatusPanelView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: DS.Space.x2) {
             HStack(alignment: .firstTextBaseline) {
-                CapsLabel(text: "Speech & Models")
+                Text("— Speech & Models")
+                    .font(DS.FontStyle.sectionLabel)
+                    .foregroundStyle(DS.ColorToken.serifInk)
                 Spacer()
                 statusBadge
             }
@@ -298,7 +302,7 @@ struct ModelStatusPanelView: View {
                         Button(viewModel.isVocabularyBoostingAvailable ? "Save Terms" : "Save Terms for Later") {
                             viewModel.saveCustomVocabularyTerms()
                         }
-                        .buttonStyle(SecondaryControlButtonStyle())
+                        .buttonStyle(PrimaryControlButtonStyle())
 
                         Text(
                             viewModel.isVocabularyBoostingAvailable
@@ -365,7 +369,9 @@ struct ModelStatusPanelView: View {
             }
 
             VStack(alignment: .leading, spacing: 4) {
-                CapsLabel(text: "Technical details")
+                Text("— Technical details")
+                    .font(DS.FontStyle.sectionLabel)
+                    .foregroundStyle(DS.ColorToken.serifInk)
                 Text(viewModel.modelPreparationDetailLine)
                     .font(DS.FontStyle.helper)
                     .foregroundStyle(DS.ColorToken.fgSecondary)
@@ -407,7 +413,9 @@ struct ModelStatusPanelView: View {
     private var modelRegistryConfigurationPanel: some View {
         VStack(alignment: .leading, spacing: DS.Space.x2) {
             HStack(spacing: DS.Space.x2) {
-                CapsLabel(text: "Model Registry")
+                Text("— Model Registry")
+                    .font(DS.FontStyle.sectionLabel)
+                    .foregroundStyle(DS.ColorToken.serifInk)
                 Spacer()
                 Text(viewModel.isCustomModelRegistryConfigured ? "CUSTOM" : "DEFAULT")
                     .font(DS.FontStyle.control)
@@ -430,7 +438,7 @@ struct ModelStatusPanelView: View {
                 Button("Save Registry") {
                     viewModel.saveModelRegistryConfiguration()
                 }
-                .buttonStyle(SecondaryControlButtonStyle())
+                .buttonStyle(PrimaryControlButtonStyle())
 
                 Button("Use Default") {
                     viewModel.resetModelRegistryConfiguration()
@@ -651,13 +659,13 @@ private struct InlineBooleanSettingControl: View {
         Button(action: action) {
             Text(title)
                 .font(DS.FontStyle.control)
-                .foregroundStyle(selected ? DS.ColorToken.white : DS.ColorToken.fgPrimary)
+                .foregroundStyle(selected ? DS.ColorToken.onAccent : DS.ColorToken.fgPrimary)
                 .frame(minWidth: 38)
                 .padding(.horizontal, DS.Space.x2)
                 .padding(.vertical, 6)
                 .background(
                     RoundedRectangle(cornerRadius: max(6, DS.Radius.sm - 2), style: .continuous)
-                        .fill(selected ? DS.ColorToken.black : .clear)
+                        .fill(selected ? DS.ColorToken.accentPrimary : .clear)
                 )
         }
         .buttonStyle(.plain)
@@ -708,7 +716,7 @@ private struct SettingsInfoTooltipIcon: View {
                 RoundedRectangle(cornerRadius: DS.Radius.sm, style: .continuous)
                     .stroke(DS.ColorToken.borderStrong, lineWidth: 1)
             )
-            .shadow(color: .black.opacity(0.08), radius: 8, x: 0, y: 4)
+            .dsPanelShadow()
     }
 }
 

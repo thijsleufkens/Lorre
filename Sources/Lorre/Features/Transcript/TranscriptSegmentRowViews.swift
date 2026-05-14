@@ -17,7 +17,6 @@ struct TranscriptSegmentRowView: View {
 
     @State private var draftText: String = ""
     @State private var showSpeakerPopover = false
-    @State private var isRowHovered = false
     @FocusState private var isTextFocused: Bool
 
     init(
@@ -169,14 +168,23 @@ struct TranscriptSegmentRowView: View {
         .padding(DS.Space.x3)
         .frame(maxWidth: .infinity, alignment: .leading)
         .contentShape(Rectangle())
+        .background(
+            Rectangle().fill(segment.isEdited ? DS.ColorToken.bgPanelAlt : Color.clear)
+        )
+        .overlay(alignment: .leading) {
+            if segment.isEdited {
+                Rectangle().fill(DS.ColorToken.borderStrong).frame(width: 2)
+            }
+        }
+        .overlay(alignment: .bottom) {
+            Rectangle()
+                .fill(DS.ColorToken.borderSoft)
+                .frame(height: 0.5)
+        }
         .onTapGesture {
             guard canCuePlayback else { return }
             onSeekRequested()
         }
-        .onHover { hovering in
-            isRowHovered = hovering
-        }
-        .dsPanelSurface(selected: isPlaybackActive || isRowHovered, cornerRadius: DS.Radius.md)
     }
 
     private func commitIfNeeded() {
@@ -186,7 +194,7 @@ struct TranscriptSegmentRowView: View {
     }
 
     private var shouldShowMetadataRow: Bool {
-        isPlaybackActive || segment.isEdited || (showsConfidence && segment.confidence != nil)
+        isPlaybackActive || (showsConfidence && segment.confidence != nil) || segment.isEdited
     }
 }
 

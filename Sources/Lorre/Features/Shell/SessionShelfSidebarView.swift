@@ -19,17 +19,10 @@ struct SessionShelfView: View {
     var body: some View {
         ScrollView(.vertical) {
             LazyVStack(alignment: .leading, spacing: DS.Space.x4) {
-                VStack(alignment: .leading, spacing: DS.Space.x2) {
-                    Text("Lorre")
-                        .font(DS.FontStyle.appTitle)
-                        .foregroundStyle(DS.ColorToken.fgPrimary)
-
-                    Text("Fully local transcription and speaker review tool")
-                        .font(DS.FontStyle.helper)
-                        .foregroundStyle(DS.ColorToken.fgSecondary)
-                        .lineLimit(1)
-                        .minimumScaleFactor(0.9)
-                }
+                LorreWordmark()
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.top, DS.Space.x4)
+                    .padding(.bottom, DS.Space.x2)
 
                 SearchFieldView(label: "Sessions", text: $viewModel.searchQuery)
 
@@ -438,69 +431,79 @@ private struct FolderContentsListView: View {
                     .padding(.leading, DS.Space.x6)
                     .padding(.vertical, DS.Space.x1)
             } else {
-                ForEach(sessions) { session in
-                    Button {
-                        onSelectSession(session)
-                    } label: {
-                        HStack(spacing: DS.Space.x2) {
-                            Circle()
-                                .fill(DS.ColorToken.fgSecondary.opacity(0.7))
-                                .frame(width: 4, height: 4)
-                            VStack(alignment: .leading, spacing: 1) {
-                                Text(primaryShelfTitle(for: session))
-                                    .font(DS.FontStyle.body)
-                                    .foregroundStyle(DS.ColorToken.fgPrimary)
-                                    .lineLimit(1)
-                                Text(secondaryShelfMetadata(for: session))
-                                .font(DS.FontStyle.mono)
-                                .foregroundStyle(DS.ColorToken.fgSecondary)
-                                .lineLimit(1)
-                            }
-                            Spacer(minLength: 0)
-                            Text(session.status.label.uppercased())
-                                .font(DS.FontStyle.control)
-                                .tracking(0.6)
-                                .foregroundStyle(DS.ColorToken.fgSecondary)
-                        }
-                        .padding(.horizontal, DS.Space.x2_5)
-                        .padding(.vertical, DS.Space.x2)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .dsPanelSurface(
-                            selected: selectedSessionID == session.id,
-                            alt: true,
-                            cornerRadius: DS.Radius.sm
-                        )
+                let grouper = SessionDateGrouper(calendar: .current, now: Date())
+                ForEach(grouper.group(sessions), id: \.group) { bucket in
+                    SessionDateGroupHeader(group: bucket.group)
+                        .padding(.leading, DS.Space.x4)
+                    ForEach(bucket.sessions) { session in
+                        sessionRow(for: session)
+                            .padding(.leading, DS.Space.x4)
                     }
-                    .buttonStyle(.plain)
-                    .contentShape(Rectangle())
-                    .contextMenu {
-                        Button("Reveal Files") {
-                            onRevealSession(session)
-                        }
+                }
+            }
+        }
+    }
 
-                        Button("Rename…") {
-                            onRenameSession(session)
-                        }
+    private func sessionRow(for session: SessionManifest) -> some View {
+        let isSelected = selectedSessionID == session.id
+        return Button {
+            onSelectSession(session)
+        } label: {
+            HStack(alignment: .top, spacing: DS.Space.x2) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(primaryShelfTitle(for: session))
+                        .font(DS.FontStyle.bodyStrong)
+                        .foregroundStyle(DS.ColorToken.fgPrimary)
+                        .lineLimit(1)
+                    Text(secondaryShelfMetadata(for: session))
+                        .font(DS.FontStyle.helper)
+                        .foregroundStyle(DS.ColorToken.fgSecondary)
+                        .lineLimit(1)
+                }
+                Spacer(minLength: 0)
+                if let badgeColor = statusBadgeColor(for: session.status) {
+                    Text(session.status.label.uppercased())
+                        .font(DS.FontStyle.helper)
+                        .foregroundStyle(badgeColor)
+                        .lineLimit(1)
+                        .fixedSize(horizontal: true, vertical: false)
+                }
+            }
+            .padding(.horizontal, DS.Space.x3)
+            .padding(.vertical, DS.Space.x2)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(
+                RoundedRectangle(cornerRadius: DS.Radius.md, style: .continuous)
+                    .fill(isSelected ? DS.ColorToken.bgPanelAlt : Color.clear)
+            )
+            .dsActiveAccentBar(isActive: isSelected)
+        }
+        .buttonStyle(.plain)
+        .contentShape(Rectangle())
+        .contextMenu {
+            Button("Reveal Files") {
+                onRevealSession(session)
+            }
 
-                        Button("Delete…", role: .destructive) {
-                            onDeleteSession(session)
-                        }
+            Button("Rename…") {
+                onRenameSession(session)
+            }
 
-                        Divider()
+            Button("Delete…", role: .destructive) {
+                onDeleteSession(session)
+            }
 
-                        Menu("Move to Folder") {
-                            Button("Unfiled") {
-                                onMoveSession(session.id, nil)
-                            }
-                            Divider()
-                            ForEach(folders) { folder in
-                                Button(folder.name) {
-                                    onMoveSession(session.id, folder.id)
-                                }
-                            }
-                        }
+            Divider()
+
+            Menu("Move to Folder") {
+                Button("Unfiled") {
+                    onMoveSession(session.id, nil)
+                }
+                Divider()
+                ForEach(folders) { folder in
+                    Button(folder.name) {
+                        onMoveSession(session.id, folder.id)
                     }
-                    .padding(.leading, DS.Space.x4)
                 }
             }
         }
@@ -528,5 +531,21 @@ private struct FolderContentsListView: View {
 
     private func isDefaultGeneratedSessionTitle(_ title: String) -> Bool {
         title.hasPrefix("Session ")
+    }
+
+    /// Returns a color for the status badge, or nil to suppress the badge entirely.
+    /// `.idle` and `.ready` are suppressed — they are the default/boring states and
+    /// would clutter every row. Only actionable states get a badge.
+    private func statusBadgeColor(for status: SessionStatus) -> Color? {
+        switch status {
+        case .recording:
+            return DS.ColorToken.accentLive
+        case .error:
+            return DS.ColorToken.statusError
+        case .processing:
+            return DS.ColorToken.statusPreparing
+        case .idle, .ready:
+            return nil
+        }
     }
 }
