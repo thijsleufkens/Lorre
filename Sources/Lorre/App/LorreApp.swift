@@ -14,5 +14,9 @@ struct LorreApp: App {
                 }
         }
         .windowResizability(.contentMinSize)
+
+        Settings {
+            SettingsView(viewModel: viewModel)
+        }
     }
 }

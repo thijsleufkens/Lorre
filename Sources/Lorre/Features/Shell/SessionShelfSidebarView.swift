@@ -16,208 +16,220 @@ struct SessionShelfView: View {
     @State private var contextDeleteFolder: SessionFolder?
     @State private var isShowingModelSettings = false
 
+    private var hasVisibleViewFilters: Bool {
+        viewModel.sessions.contains { $0.status == .processing || $0.status == .error }
+    }
+
     var body: some View {
-        ScrollView(.vertical) {
-            LazyVStack(alignment: .leading, spacing: DS.Space.x4) {
-                LorreWordmark()
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(.top, DS.Space.x4)
-                    .padding(.bottom, DS.Space.x2)
+        VStack(spacing: 0) {
+            ScrollView(.vertical) {
+                LazyVStack(alignment: .leading, spacing: DS.Space.x4) {
+                    SearchFieldView(label: "Sessions", text: $viewModel.searchQuery)
 
-                SearchFieldView(label: "Sessions", text: $viewModel.searchQuery)
-
-                HStack(spacing: DS.Space.x2) {
-                    Button {
-                        isPresentingImportPicker = true
-                    } label: {
-                        Text("Import Audio")
-                            .frame(maxWidth: .infinity, alignment: .center)
-                    }
-                    .buttonStyle(SecondaryControlButtonStyle())
-                    .disabled(viewModel.isStartingRecording || viewModel.hasActiveRecording)
-
-                    Button {
-                        viewModel.showRecorderScreenTapped()
-                    } label: {
-                        Text(viewModel.recorderShelfActionLabel)
-                            .frame(maxWidth: .infinity, alignment: .center)
-                    }
-                    .buttonStyle(PrimaryControlButtonStyle())
-                    .disabled(viewModel.isStartingRecording || (viewModel.hasActiveRecording && viewModel.selectedSession == nil))
-                }
-                .frame(maxWidth: .infinity)
-
-                if viewModel.hasActiveRecording {
-                    ActiveRecordingShelfCard(viewModel: viewModel)
-                }
-
-                VStack(alignment: .leading, spacing: DS.Space.x2) {
-                    CapsLabel(text: "Views")
-                    ForEach(Self.compactViewFilters) { filter in
-                        Button {
-                            viewModel.selectedFilter = filter
-                            viewModel.toggleSidebarViewExpansion(filter)
-                        } label: {
-                            FolderFilterRowView(
-                                title: filter.title,
-                                iconName: filter.iconName,
-                                count: viewModel.count(for: filter),
-                                isSelected: viewModel.selectedFilter == filter,
-                                isExpanded: viewModel.expandedViewFilters.contains(filter)
-                            )
-                        }
-                        .buttonStyle(.plain)
-                        .contentShape(Rectangle())
-
-                        if viewModel.expandedViewFilters.contains(filter) {
-                            FolderContentsListView(
-                                sessions: viewModel.sessionsForViewBrowser(filter),
-                                selectedSessionID: viewModel.selectedSessionID,
-                                folders: viewModel.folders,
-                                onSelectSession: { session in
-                                    viewModel.selectSession(session)
-                                },
-                                onRevealSession: { session in
-                                    viewModel.revealFiles(for: session.id)
-                                },
-                                onRenameSession: { session in
-                                    contextRenameSession = session
-                                    contextRenameDraft = session.displayTitle
-                                },
-                                onDeleteSession: { session in
-                                    contextDeleteSession = session
-                                },
-                                onMoveSession: { sessionID, folderID in
-                                    viewModel.moveSession(sessionID, to: folderID)
-                                }
-                            )
-                        }
-                    }
-                }
-
-                VStack(alignment: .leading, spacing: DS.Space.x2) {
                     HStack(spacing: DS.Space.x2) {
-                        CapsLabel(text: "Folders")
-                        Spacer()
-                        Button("New Folder") {
-                            newFolderName = ""
-                            isShowingCreateFolderAlert = true
+                        Button {
+                            isPresentingImportPicker = true
+                        } label: {
+                            Text("Import Audio")
+                                .frame(maxWidth: .infinity, alignment: .center)
                         }
                         .buttonStyle(SecondaryControlButtonStyle())
-                    }
+                        .disabled(viewModel.isStartingRecording || viewModel.hasActiveRecording)
 
-                    Button {
-                        viewModel.selectFolderFilter(nil)
-                    } label: {
-                        FolderFilterRowView(
-                            title: "All Folders",
-                            iconName: "tray.full",
-                            count: viewModel.sessions.count,
-                            isSelected: viewModel.selectedFolderID == nil
-                        )
-                    }
-                    .buttonStyle(.plain)
-                    .contentShape(Rectangle())
-
-                    Button {
-                        viewModel.selectFolderFilter(AppViewModel.unfiledFolderSelectionID)
-                        viewModel.toggleSidebarFolderExpansion(AppViewModel.unfiledFolderSelectionID)
-                    } label: {
-                        FolderFilterRowView(
-                            title: "Unfiled",
-                            iconName: "folder",
-                            count: viewModel.countForFolder(AppViewModel.unfiledFolderSelectionID),
-                            isSelected: viewModel.selectedFolderID == AppViewModel.unfiledFolderSelectionID,
-                            isExpanded: viewModel.expandedFolderIDs.contains(AppViewModel.unfiledFolderSelectionID)
-                        )
-                    }
-                    .buttonStyle(.plain)
-                    .contentShape(Rectangle())
-
-                    if viewModel.expandedFolderIDs.contains(AppViewModel.unfiledFolderSelectionID) {
-                        FolderContentsListView(
-                            sessions: viewModel.sessionsForFolderBrowser(AppViewModel.unfiledFolderSelectionID),
-                            selectedSessionID: viewModel.selectedSessionID,
-                            folders: viewModel.folders,
-                            onSelectSession: { session in
-                                viewModel.selectSession(session)
-                            },
-                            onRevealSession: { session in
-                                viewModel.revealFiles(for: session.id)
-                            },
-                            onRenameSession: { session in
-                                contextRenameSession = session
-                                contextRenameDraft = session.displayTitle
-                            },
-                            onDeleteSession: { session in
-                                contextDeleteSession = session
-                            },
-                            onMoveSession: { sessionID, folderID in
-                                viewModel.moveSession(sessionID, to: folderID)
-                            }
-                        )
-                    }
-
-                    ForEach(viewModel.folders) { folder in
                         Button {
-                            viewModel.selectFolderFilter(folder.id)
-                            viewModel.toggleSidebarFolderExpansion(folder.id)
+                            viewModel.showRecorderScreenTapped()
                         } label: {
-                            FolderFilterRowView(
-                                title: folder.name,
-                                iconName: "folder",
-                                count: viewModel.countForFolder(folder.id),
-                                isSelected: viewModel.selectedFolderID == folder.id,
-                                isExpanded: viewModel.expandedFolderIDs.contains(folder.id)
-                            )
+                            Text(viewModel.recorderShelfActionLabel)
+                                .frame(maxWidth: .infinity, alignment: .center)
                         }
-                        .buttonStyle(.plain)
-                        .contentShape(Rectangle())
-                        .contextMenu {
-                            Button("Rename Folder…") {
-                                contextRenameFolder = folder
-                                contextRenameFolderDraft = folder.name
-                            }
-                            Button("Delete Folder…", role: .destructive) {
-                                contextDeleteFolder = folder
-                            }
-                        }
+                        .buttonStyle(PrimaryControlButtonStyle())
+                        .disabled(viewModel.isStartingRecording || (viewModel.hasActiveRecording && viewModel.selectedSession == nil))
+                    }
+                    .frame(maxWidth: .infinity)
 
-                        if viewModel.expandedFolderIDs.contains(folder.id) {
-                            FolderContentsListView(
-                                sessions: viewModel.sessionsForFolderBrowser(folder.id),
-                                selectedSessionID: viewModel.selectedSessionID,
-                                folders: viewModel.folders,
-                                onSelectSession: { session in
-                                    viewModel.selectSession(session)
-                                },
-                                onRevealSession: { session in
-                                    viewModel.revealFiles(for: session.id)
-                                },
-                                onRenameSession: { session in
-                                    contextRenameSession = session
-                                    contextRenameDraft = session.displayTitle
-                                },
-                                onDeleteSession: { session in
-                                    contextDeleteSession = session
-                                },
-                                onMoveSession: { sessionID, folderID in
-                                    viewModel.moveSession(sessionID, to: folderID)
+                    if viewModel.hasActiveRecording {
+                        ActiveRecordingShelfCard(viewModel: viewModel)
+                    }
+
+                    if hasVisibleViewFilters {
+                        VStack(alignment: .leading, spacing: DS.Space.x2) {
+                            CapsLabel(text: "Views")
+                            ForEach(Self.compactViewFilters) { filter in
+                                Button {
+                                    viewModel.selectedFilter = filter
+                                    viewModel.toggleSidebarViewExpansion(filter)
+                                } label: {
+                                    FolderFilterRowView(
+                                        title: filter.title,
+                                        iconName: filter.iconName,
+                                        count: viewModel.count(for: filter),
+                                        isSelected: viewModel.selectedFilter == filter,
+                                        isExpanded: viewModel.expandedViewFilters.contains(filter)
+                                    )
                                 }
-                            )
+                                .buttonStyle(.plain)
+                                .contentShape(Rectangle())
+
+                                if viewModel.expandedViewFilters.contains(filter) {
+                                    FolderContentsListView(
+                                        sessions: viewModel.sessionsForViewBrowser(filter),
+                                        selectedSessionID: viewModel.selectedSessionID,
+                                        folders: viewModel.folders,
+                                        onSelectSession: { session in
+                                            viewModel.selectSession(session)
+                                        },
+                                        onRevealSession: { session in
+                                            viewModel.revealFiles(for: session.id)
+                                        },
+                                        onRenameSession: { session in
+                                            contextRenameSession = session
+                                            contextRenameDraft = session.displayTitle
+                                        },
+                                        onDeleteSession: { session in
+                                            contextDeleteSession = session
+                                        },
+                                        onMoveSession: { sessionID, folderID in
+                                            viewModel.moveSession(sessionID, to: folderID)
+                                        }
+                                    )
+                                }
+                            }
+                        }
+                    }
+
+                    if !viewModel.folders.isEmpty {
+                        VStack(alignment: .leading, spacing: DS.Space.x2) {
+                            CapsLabel(text: "Folders")
+
+                            Button {
+                                viewModel.selectFolderFilter(nil)
+                            } label: {
+                                FolderFilterRowView(
+                                    title: "All Folders",
+                                    iconName: "tray.full",
+                                    count: viewModel.sessions.count,
+                                    isSelected: viewModel.selectedFolderID == nil
+                                )
+                            }
+                            .buttonStyle(.plain)
+                            .contentShape(Rectangle())
+
+                            Button {
+                                viewModel.selectFolderFilter(AppViewModel.unfiledFolderSelectionID)
+                                viewModel.toggleSidebarFolderExpansion(AppViewModel.unfiledFolderSelectionID)
+                            } label: {
+                                FolderFilterRowView(
+                                    title: "Unfiled",
+                                    iconName: "folder",
+                                    count: viewModel.countForFolder(AppViewModel.unfiledFolderSelectionID),
+                                    isSelected: viewModel.selectedFolderID == AppViewModel.unfiledFolderSelectionID,
+                                    isExpanded: viewModel.expandedFolderIDs.contains(AppViewModel.unfiledFolderSelectionID)
+                                )
+                            }
+                            .buttonStyle(.plain)
+                            .contentShape(Rectangle())
+
+                            if viewModel.expandedFolderIDs.contains(AppViewModel.unfiledFolderSelectionID) {
+                                FolderContentsListView(
+                                    sessions: viewModel.sessionsForFolderBrowser(AppViewModel.unfiledFolderSelectionID),
+                                    selectedSessionID: viewModel.selectedSessionID,
+                                    folders: viewModel.folders,
+                                    onSelectSession: { session in
+                                        viewModel.selectSession(session)
+                                    },
+                                    onRevealSession: { session in
+                                        viewModel.revealFiles(for: session.id)
+                                    },
+                                    onRenameSession: { session in
+                                        contextRenameSession = session
+                                        contextRenameDraft = session.displayTitle
+                                    },
+                                    onDeleteSession: { session in
+                                        contextDeleteSession = session
+                                    },
+                                    onMoveSession: { sessionID, folderID in
+                                        viewModel.moveSession(sessionID, to: folderID)
+                                    }
+                                )
+                            }
+
+                            ForEach(viewModel.folders) { folder in
+                                Button {
+                                    viewModel.selectFolderFilter(folder.id)
+                                    viewModel.toggleSidebarFolderExpansion(folder.id)
+                                } label: {
+                                    FolderFilterRowView(
+                                        title: folder.name,
+                                        iconName: "folder",
+                                        count: viewModel.countForFolder(folder.id),
+                                        isSelected: viewModel.selectedFolderID == folder.id,
+                                        isExpanded: viewModel.expandedFolderIDs.contains(folder.id)
+                                    )
+                                }
+                                .buttonStyle(.plain)
+                                .contentShape(Rectangle())
+                                .contextMenu {
+                                    Button("Rename Folder…") {
+                                        contextRenameFolder = folder
+                                        contextRenameFolderDraft = folder.name
+                                    }
+                                    Button("Delete Folder…", role: .destructive) {
+                                        contextDeleteFolder = folder
+                                    }
+                                }
+
+                                if viewModel.expandedFolderIDs.contains(folder.id) {
+                                    FolderContentsListView(
+                                        sessions: viewModel.sessionsForFolderBrowser(folder.id),
+                                        selectedSessionID: viewModel.selectedSessionID,
+                                        folders: viewModel.folders,
+                                        onSelectSession: { session in
+                                            viewModel.selectSession(session)
+                                        },
+                                        onRevealSession: { session in
+                                            viewModel.revealFiles(for: session.id)
+                                        },
+                                        onRenameSession: { session in
+                                            contextRenameSession = session
+                                            contextRenameDraft = session.displayTitle
+                                        },
+                                        onDeleteSession: { session in
+                                            contextDeleteSession = session
+                                        },
+                                        onMoveSession: { sessionID, folderID in
+                                            viewModel.moveSession(sessionID, to: folderID)
+                                        }
+                                    )
+                                }
+                            }
                         }
                     }
                 }
-
-                ModelStatusCompactPanelView(
-                    viewModel: viewModel,
-                    isShowingSettings: $isShowingModelSettings
-                )
+                .padding(DS.Space.x4)
+                .frame(maxWidth: .infinity, alignment: .leading)
             }
-            .padding(DS.Space.x4)
-            .frame(maxWidth: .infinity, alignment: .leading)
+            .scrollIndicators(.hidden)
+
+            // Footer: always-visible "+ New folder" affordance
+            HStack {
+                Button {
+                    newFolderName = ""
+                    isShowingCreateFolderAlert = true
+                } label: {
+                    HStack(spacing: 4) {
+                        Image(systemName: "plus")
+                            .font(.system(size: 10, weight: .medium))
+                        Text("New folder")
+                    }
+                    .font(DS.FontStyle.helper)
+                    .foregroundStyle(DS.ColorToken.fgSecondary)
+                }
+                .buttonStyle(.plain)
+                Spacer()
+            }
+            .padding(.horizontal, DS.Space.x4)
+            .padding(.vertical, DS.Space.x2)
         }
-        .scrollIndicators(.hidden)
         .frame(maxHeight: .infinity, alignment: .top)
         .dsPanelSurface(cornerRadius: DS.Radius.lg)
         .fileImporter(

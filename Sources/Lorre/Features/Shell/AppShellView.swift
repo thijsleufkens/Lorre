@@ -2,6 +2,7 @@ import SwiftUI
 
 struct AppShellView: View {
     @ObservedObject var viewModel: AppViewModel
+    @Environment(\.openSettings) private var openSettings
 
     var body: some View {
         GeometryReader { geometry in
@@ -25,6 +26,19 @@ struct AppShellView: View {
                 }
                 .padding(.horizontal, horizontalPadding)
                 .padding(.vertical, verticalPadding)
+            }
+        }
+        .toolbar {
+            ToolbarItem(placement: .principal) {
+                SourceModeSegmentedControl(viewModel: viewModel)
+            }
+            ToolbarItem(placement: .primaryAction) {
+                Button {
+                    openSettings()
+                } label: {
+                    Image(systemName: "gearshape")
+                }
+                .help("Open Settings")
             }
         }
     }
