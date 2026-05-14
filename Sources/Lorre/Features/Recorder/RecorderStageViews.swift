@@ -312,11 +312,6 @@ struct ProcessingPipelineView: View {
             .frame(maxWidth: .infinity, alignment: .leading)
             .dsPanelSurface(cornerRadius: DS.Radius.lg)
 
-            SpeakerRecognitionQuickAccessView(
-                viewModel: viewModel,
-                scopeNote: "This changes future processing runs. The current session keeps the settings it started with."
-            )
-
             if let transcript = viewModel.activeTranscript, transcript.sessionId == session.id {
                 VStack(alignment: .leading, spacing: DS.Space.x2) {
                     HStack(spacing: DS.Space.x2) {
