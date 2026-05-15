@@ -61,13 +61,16 @@ All `swift` invocations need the toolchain workaround above. `scripts/swift_test
 
 `AppViewModel` (MainActor `@MainActor` `ObservableObject`) owns app state. UI binds to its flat `@Published` properties and invokes its methods. Persistence and audio capture are services injected via `AppDependencies` (see `live()` factory). Captured audio flows: `AVFoundationRecorderService` → `ProcessingCoordinator` → FluidAudio → `TranscriptDocument` written to disk → reloaded by the view model.
 
-System audio uses macOS 15's CoreAudio Process Tap (`ProcessTapSystemAudioCapture`). The aggregate device anchors to the default system output device as `MainSubDevice` for clock, lists processes via `stereoMixdownOfProcesses` filtered on `kAudioProcessPropertyIsRunningOutput`, and reads PCM through `AudioDeviceCreateIOProcIDWithBlock` (matches the [insidegui/AudioCap](https://github.com/insidegui/AudioCap) reference pattern). Three things were essential to get this working on ad-hoc signed builds — earlier attempts wrote `zero buffers in ad-hoc-signed .app builds` to CLAUDE.md but the real cause was a missing combination of all three:
+System audio uses macOS 15's CoreAudio Process Tap (`ProcessTapSystemAudioCapture`). The aggregate device anchors to the default system output device as `MainSubDevice` for clock, lists every non-self process via `stereoMixdownOfProcesses`, and reads PCM through `AudioDeviceCreateIOProcIDWithBlock` (matches the [insidegui/AudioCap](https://github.com/insidegui/AudioCap) reference pattern). Four things were essential to get this working on ad-hoc signed builds:
 
 1. Aggregate device must include `kAudioAggregateDeviceMainSubDeviceKey` (real hardware clock).
 2. Tap I/O must use `AudioDeviceCreateIOProcIDWithBlock` directly, not `AVAudioEngine + installTap`.
-3. **Critical**: the `.app` bundle must be code-signed with `com.apple.security.device.audio-input` entitlement, and Info.plist must contain `NSAudioCaptureUsageDescription`. Without either, the tap creates successfully and the IOProc fires, but all delivered buffers are silent. See `scripts/package_macos_app.sh` for how both are applied at package time.
+3. The `.app` bundle must be code-signed with `com.apple.security.device.audio-input` entitlement, and Info.plist must contain `NSAudioCaptureUsageDescription`. Without either, the tap creates successfully and the IOProc fires, but all delivered buffers are silent.
+4. At least one process in the tap's include list must be actively producing audio at the moment the tap is created — otherwise the IOProc fires but every buffer is silent. In system-only mode Lorre satisfies this by running an `AudioOutputWarmer` (a silent `AVAudioEngine` output at volume 0) for the duration of the recording. In mic+system mode the warmer is skipped — the mic `AVAudioEngine` already keeps the audio subsystem warm, and a second engine on the same device introduces a monitoring path. The mic engine also enables `setVoiceProcessingEnabled(true)` in mic+system mode for AEC + noise suppression of whatever any AEC-aware app (Teams, Zoom, FaceTime, Discord) routes through the shared output.
 
-See `docs/superpowers/specs/2026-05-14-process-tap-clock-fix.md` for the full diagnostic walk-through.
+**Known limitation**: built-in MacBook speakers + built-in mic + an audio source that does **not** enable system VP (Safari, Chrome, Music app, etc.) → acoustic feedback from speakers to mic produces an echo in the mixed audio file. Transcription quality is unaffected for the goal of these meetings. Workarounds: use headphones/AirPods, or use an external mic. The realistic meeting case (Teams/Zoom/FaceTime active) does enable system-wide VP and is unaffected.
+
+See `docs/superpowers/specs/2026-05-14-process-tap-clock-fix.md` and `scripts/package_macos_app.sh` for the full setup.
 
 ## Persistence + schema migration
 

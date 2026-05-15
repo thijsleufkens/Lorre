@@ -35,10 +35,14 @@ That is what lets Lorre offer private, on-device transcription with speaker labe
 
 ## Requirements
 
-- macOS 14 or later
+- macOS 15 or later
 - Microphone access for microphone recording
-- Screen and System Audio Recording access for system-audio capture
+- Audio Capture access for system-audio recording (separate from microphone — requested via `NSAudioCaptureUsageDescription`)
 - A local build environment for Swift if you want to run from source
+
+## Known limitation
+
+When recording `Microphone + system audio` on a MacBook's built-in speakers and built-in mic, audio playing through the speakers is also picked up acoustically by the microphone — so the mix contains the system audio twice (once cleanly via the tap, once via the mic) and you hear an echo on playback. Transcription quality is unaffected and the realistic meeting case (Teams, Zoom, FaceTime, Discord active) is unaffected because those apps enable system-wide acoustic echo cancellation. Workaround for the non-meeting case: use headphones/AirPods or an external mic.
 
 ## Build and run
 
