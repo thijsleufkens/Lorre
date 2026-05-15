@@ -42,6 +42,7 @@ final class ProcessTapSystemAudioCapture: @unchecked Sendable {
     private var aggregateID: AudioObjectID?
     private var ioProcID: AudioDeviceIOProcID?
     private var writer: ProcessTapAudioWriter?
+    private var warmer: AudioOutputWarmer?
 
     private let ioQueue = DispatchQueue(
         label: "Lorre.ProcessTap.IO",
@@ -50,13 +51,23 @@ final class ProcessTapSystemAudioCapture: @unchecked Sendable {
 
     // MARK: - Start
 
+    /// - Parameters:
+    ///   - outputWarmerRequired: When `true`, this capture spins up a silent
+    ///     `AVAudioEngine` so that Lorre registers as a "producing output"
+    ///     process — required for the tap to deliver audio in system-only
+    ///     mode. Pass `false` when the caller is already running a mic
+    ///     `AVAudioEngine` in parallel; that engine keeps the audio
+    ///     subsystem warm and a second engine can cause monitoring feedback
+    ///     (acoustic echo through speakers).
     func start(
         outputURL: URL,
+        outputWarmerRequired: Bool,
         onPCMBuffer: @escaping @Sendable (AVAudioPCMBuffer) -> Void,
         onMeterLevel: @escaping @Sendable (Double) -> Void
     ) async throws -> StartResult {
         return try startSynchronously(
             outputURL: outputURL,
+            outputWarmerRequired: outputWarmerRequired,
             onPCMBuffer: onPCMBuffer,
             onMeterLevel: onMeterLevel
         )
@@ -67,17 +78,21 @@ final class ProcessTapSystemAudioCapture: @unchecked Sendable {
     /// Stop the IOProc, destroy the aggregate device and process tap. Safe to
     /// call multiple times; subsequent calls are no-ops.
     func stop() {
-        let (aggregateID, tapID, procID, writer) = lock.withLock {
+        let (aggregateID, tapID, procID, writer, warmer) = lock.withLock {
             let a = self.aggregateID
             let t = self.tapID
             let p = self.ioProcID
             let w = self.writer
+            let wm = self.warmer
             self.aggregateID = nil
             self.tapID = nil
             self.ioProcID = nil
             self.writer = nil
-            return (a, t, p, w)
+            self.warmer = nil
+            return (a, t, p, w, wm)
         }
+
+        warmer?.stop()
 
         if let aggregate = aggregateID, let procID {
             let stopStatus = AudioDeviceStop(aggregate, procID)
@@ -125,6 +140,7 @@ final class ProcessTapSystemAudioCapture: @unchecked Sendable {
 
     private func startSynchronously(
         outputURL: URL,
+        outputWarmerRequired: Bool,
         onPCMBuffer: @escaping @Sendable (AVAudioPCMBuffer) -> Void,
         onMeterLevel: @escaping @Sendable (Double) -> Void
     ) throws -> StartResult {
@@ -132,23 +148,40 @@ final class ProcessTapSystemAudioCapture: @unchecked Sendable {
         var createdAggregateID: AudioObjectID? = nil
         var createdProcID: AudioDeviceIOProcID? = nil
 
+        // ── Step 0: Optionally start a silent AVAudioEngine output ──────────
+        // Empirically the tap only delivers buffers when at least one process
+        // is producing audio at tap-creation time. In system-only mode we
+        // register Lorre as a producer by playing silence ourselves. In
+        // mic+system mode the caller is already running a mic AVAudioEngine
+        // which keeps the audio subsystem warm; spinning up a second engine
+        // creates a monitoring feedback path (speaker → mic acoustic echo).
+        var warmerOwnership: AudioOutputWarmer? = nil
+        if outputWarmerRequired {
+            let warmer = try AudioOutputWarmer()
+            try warmer.start()
+            // Give CoreAudio ~150ms to register us as a producing process
+            // before we enumerate the process list and create the tap.
+            Thread.sleep(forTimeInterval: 0.15)
+            warmerOwnership = warmer
+        }
+
         do {
-            // ── Step 1: Enumerate process AudioObjectIDs, exclude self ───────
-            // On macOS 15.7.3 the `stereoGlobalTapButExcludeProcesses`
-            // initializer reliably produces all-zero buffers — verified
-            // against insidegui/AudioCap which only works on this machine when
-            // tapping a specific PID via the include-list initializer. So we
-            // pass the inverse: every process except ourselves as the include
-            // list. Functionally equivalent, but goes through the working
-            // CoreAudio code path.
-            let (_, otherProcessIDs) = try enumerateProcessAudioObjectIDs()
+            // ── Step 1: Enumerate process AudioObjectIDs ─────────────────────
+            // We don't filter on `kAudioProcessPropertyIsRunningOutput` — with
+            // the warmer running our own process is producing, which keeps
+            // the audio subsystem warm. We deliberately EXCLUDE ourselves
+            // from the tap list so Lorre's silent buffers don't get mixed
+            // into the recording (which fragments the captured audio and
+            // breaks downstream speech detection).
+            let (_, otherProcessIDs) = try enumerateAllProcessAudioObjectIDs()
+            let processList = otherProcessIDs
 
             // ── Step 2: Create CATapDescription ──────────────────────────────
             // Setting the UUID explicitly lets us reference the same value in
             // the aggregate device's tap list without round-tripping through
             // `kAudioTapPropertyUID` (matches AudioCap's reference pattern).
             let description = CATapDescription(
-                stereoMixdownOfProcesses: otherProcessIDs
+                stereoMixdownOfProcesses: processList
             )
             description.uuid = UUID()
             description.muteBehavior = .unmuted
@@ -282,13 +315,16 @@ final class ProcessTapSystemAudioCapture: @unchecked Sendable {
                 self.aggregateID = aggregateID
                 self.ioProcID = procID
                 self.writer = writer
+                self.warmer = warmerOwnership
             }
+            warmerOwnership = nil
 
             return StartResult(outputURL: outputURL, startedAt: startedAt)
 
         } catch {
             // Partial-failure teardown matches the live stop() sequence:
-            //   IOProc → aggregate → tap.
+            //   warmer → IOProc → aggregate → tap.
+            warmerOwnership?.stop()
             if let aggregate = createdAggregateID, let procID = createdProcID {
                 AudioDeviceStop(aggregate, procID)
                 AudioDeviceDestroyIOProcID(aggregate, procID)
@@ -305,12 +341,13 @@ final class ProcessTapSystemAudioCapture: @unchecked Sendable {
 
     // MARK: - Private helpers
 
-    /// Enumerates process AudioObjectIDs known to CoreAudio. Returns
-    /// `(ownID, currentlyOutputtingOthers)` — the others list contains only
-    /// processes whose `kAudioProcessPropertyIsRunningOutput` is true. On
-    /// macOS 15.7.3 the tap appears to silently break when given idle PIDs
-    /// in the include list, so we only pass the active producers.
-    private func enumerateProcessAudioObjectIDs() throws -> (own: AudioObjectID, others: [AudioObjectID]) {
+    /// Enumerates every process AudioObjectID known to CoreAudio and splits
+    /// out this process's own ID. No filter on `IsRunningOutput` — callers
+    /// rely on the `AudioOutputWarmer` to ensure the tap has at least one
+    /// producing process at creation time (ourselves), and we want all other
+    /// PIDs in the include list so the tap can mix in any of them as they
+    /// start producing audio later.
+    private func enumerateAllProcessAudioObjectIDs() throws -> (own: AudioObjectID, others: [AudioObjectID]) {
         let ownPID = ProcessInfo.processInfo.processIdentifier
 
         var listAddress = AudioObjectPropertyAddress(
@@ -355,11 +392,6 @@ final class ProcessTapSystemAudioCapture: @unchecked Sendable {
             mScope: AudioObjectPropertyScope(kAudioObjectPropertyScopeGlobal),
             mElement: AudioObjectPropertyElement(kAudioObjectPropertyElementMain)
         )
-        var outputAddress = AudioObjectPropertyAddress(
-            mSelector: AudioObjectPropertySelector(kAudioProcessPropertyIsRunningOutput),
-            mScope: AudioObjectPropertyScope(kAudioObjectPropertyScopeGlobal),
-            mElement: AudioObjectPropertyElement(kAudioObjectPropertyElementMain)
-        )
 
         var ownAudioObjectID = AudioObjectID(kAudioObjectUnknown)
         var others: [AudioObjectID] = []
@@ -375,15 +407,7 @@ final class ProcessTapSystemAudioCapture: @unchecked Sendable {
 
             if processPID == ownPID {
                 ownAudioObjectID = objectID
-                continue
-            }
-
-            var isOutputting: UInt32 = 0
-            var outputSize = UInt32(MemoryLayout<UInt32>.size)
-            let outputStatus = AudioObjectGetPropertyData(
-                objectID, &outputAddress, 0, nil, &outputSize, &isOutputting
-            )
-            if outputStatus == noErr, isOutputting != 0 {
+            } else {
                 others.append(objectID)
             }
         }
@@ -394,13 +418,6 @@ final class ProcessTapSystemAudioCapture: @unchecked Sendable {
             throw LorreError.recordingStartFailed(
                 "Could not find this process (PID \(ownPID)) in the CoreAudio "
                 + "process object list. Process tap cannot be created safely."
-            )
-        }
-
-        guard !others.isEmpty else {
-            throw LorreError.recordingStartFailed(
-                "No other process is currently producing audio output. "
-                + "Start playing audio from the app you want to capture, then start the recording."
             )
         }
 
@@ -535,6 +552,61 @@ final class ProcessTapSystemAudioCapture: @unchecked Sendable {
             )
         }
         return uid
+    }
+}
+
+// MARK: - AudioOutputWarmer
+
+/// Runs an `AVAudioEngine` that loops a zero-filled buffer at zero volume so
+/// that Lorre registers as a "producing output" process in CoreAudio's
+/// process list. This guarantees the include-list of the process tap has at
+/// least one active producer at creation time (without that, the tap fires
+/// the IOProc but every delivered buffer is all-zeros — verified on
+/// macOS 15.7.3 ad-hoc-signed builds).
+///
+/// The warmer stays running for the entire recording so the tap keeps mixing
+/// in any other listed process that starts producing audio later.
+@available(macOS 15.0, *)
+private final class AudioOutputWarmer: @unchecked Sendable {
+    private let engine = AVAudioEngine()
+    private let player = AVAudioPlayerNode()
+    private var isRunning = false
+
+    init() throws {
+        guard let format = AVAudioFormat(
+            standardFormatWithSampleRate: 48_000,
+            channels: 2
+        ) else {
+            throw LorreError.recordingStartFailed(
+                "Could not allocate AVAudioFormat for output warmer."
+            )
+        }
+        engine.attach(player)
+        engine.connect(player, to: engine.mainMixerNode, format: format)
+        engine.mainMixerNode.outputVolume = 0
+    }
+
+    func start() throws {
+        guard !isRunning else { return }
+        let format = engine.mainMixerNode.outputFormat(forBus: 0)
+        guard let buffer = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: 4800) else {
+            throw LorreError.recordingStartFailed(
+                "Could not allocate silent buffer for output warmer."
+            )
+        }
+        buffer.frameLength = 4800
+
+        player.scheduleBuffer(buffer, at: nil, options: [.loops], completionHandler: nil)
+        try engine.start()
+        player.play()
+        isRunning = true
+    }
+
+    func stop() {
+        guard isRunning else { return }
+        if player.isPlaying { player.stop() }
+        if engine.isRunning { engine.stop() }
+        isRunning = false
     }
 }
 

@@ -531,6 +531,7 @@ actor AVFoundationRecorderService: RecorderService {
                 let source = request.source
                 _ = try await processTap.start(
                     outputURL: systemTempURL,
+                    outputWarmerRequired: !request.source.includesMicrophone,
                     onPCMBuffer: { buffer in
                         if source == .microphoneAndSystemAudio {
                             previewMixer?.enqueue(buffer, source: .systemAudio)
@@ -834,6 +835,21 @@ actor AVFoundationRecorderService: RecorderService {
         let tempURL = tempDir.appendingPathComponent(UUID().uuidString).appendingPathExtension("caf")
         let engine = AVAudioEngine()
         let inputNode = engine.inputNode
+
+        // In mic+system mode the system audio plays through the speakers and
+        // gets picked up acoustically by the built-in microphone, causing an
+        // echo when the two stems are mixed. Enable macOS voice processing
+        // (acoustic echo cancellation + noise suppression) on the input node
+        // so the mic stem has the speaker signal subtracted out.
+        if source == .microphoneAndSystemAudio {
+            do {
+                try inputNode.setVoiceProcessingEnabled(true)
+            } catch {
+                // Voice processing may not be available on every audio device
+                // (e.g. some virtual aggregate inputs). Fall back to raw mic.
+            }
+        }
+
         let inputFormat = inputNode.inputFormat(forBus: 0)
         let writer = try CaptureFileWriterBox(file: AVAudioFile(forWriting: tempURL, settings: inputFormat.settings))
         let targetFrames = Int((inputFormat.sampleRate * 0.45).rounded())
