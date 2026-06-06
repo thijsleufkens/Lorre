@@ -404,6 +404,121 @@ transcripts for external thinking tools.
   `LocalMetricsLogger` with a "Reveal diagnostics" command so users can
   share logs when filing issues. Impact 2, Effort S, Horizon Next.
 
+## Theme 12 - Upstream (Jesse / jjscholtes) cherry-pick candidates
+
+Our fork and upstream diverged at commit `f557dc5`. Our branch went deep on
+the CoreAudio Process Tap rewrite, the Studio Sage design, and the 4-tab
+Settings scene. Upstream went deep on dictation, call detection, and ASR
+model options. The items below are the upstream features worth pulling back
+into our fork. None are implemented yet - this theme is the shopping list,
+with integration notes specific to where our two codebases differ.
+
+**Shared seam to watch:** upstream made huge edits to `AppViewModel.swift`
+(+1818 lines) and `Models.swift` (+456). Our versions of those files also
+moved (Sage + Settings scene). The pure domain/value files cherry-pick
+cleanly; anything touching `AppViewModel` wiring will need hand-merging,
+not a literal `git cherry-pick`.
+
+### 12.0 - Default to Dutch (NL), not English (highest priority for this fork)
+
+The most important item here and the smallest. Upstream's v3 model is
+multilingual and already lists `nl` in `supportedLanguageCodes`
+(`["en","fr","de","es","it","pt","nl","pl"]`), but the **default is
+hardcoded to `"en"`** in several places (`languageHint = "en"`,
+`languageCode = "en"`). Most of the primary user's meetings are in Dutch,
+so an English default silently degrades the core transcript.
+
+- Make NL the default batch language / language hint for this fork (or a
+  first-run choice that we set to NL).
+- Confirm the v3 multilingual path is the default ASR mode (not the
+  English-only v2 path) so a Dutch meeting never lands on an English-only
+  model by accident.
+- Verify diarization + vocabulary boosting behave with NL.
+- Impact 5, Effort S, Horizon Now. *This one is worth doing even before any
+  other cherry-pick.*
+
+### 12.1 - FluidAudio 0.15 + selectable ASR models
+
+Upstream bumped FluidAudio `0.13.6 -> 0.15.0` and added selectable ASR
+paths: `Parakeet v3 multilingual` (default), `Parakeet v2 English-only`,
+`Parakeet + Cohere` (alternate draft), plus `Nemotron` streaming for the
+live preview. Lives in `Package.swift`, `FluidAudioAdapters.swift` (+572),
+`FluidAudioLiveStreamingRecognizer.swift`, and the model-mode types in
+`Models.swift`.
+
+- Pure quality win for the core task; this is the headline cherry-pick.
+- Risk: 0.15 may interact with our Process Tap audio pipeline differently
+  than upstream's ScreenCaptureKit path - validate the captured-buffer
+  format and live-streaming recognizer against a real recording before
+  trusting it.
+- For our fork, prefer the multilingual v3 path (see 12.0); v2 English-only
+  is a secondary option, not the default.
+- The `Parakeet + Cohere` draft pulls in an external/hosted dependency -
+  check whether it conflicts with our local-only privacy stance before
+  enabling it (it may belong on the "out of scope" list).
+- Impact 5, Effort M, Horizon Now.
+
+### 12.2 - Call Watcher (folds into Theme 1)
+
+Upstream's `CallDetection.swift` (474 lines, pure value types, with
+`CallDetectionTests.swift`) plus `CallPromptNotificationServices.swift` and
+`CallWatcherPlatformServices.swift` are a **working implementation of the
+auto-record detection that our Theme 1 only specifies**. It detects that a
+call/meeting has started (window-title hints, audio-activity summary,
+capture-device usage, confidence bands) and prompts via a user notification.
+
+- Treat this as the starting point for Theme 1 V1 rather than building the
+  composite start-signal from scratch. Map upstream's `CallSignalSample` /
+  `CallDetectionCandidate` / confidence bands onto our Armed/Recording state
+  machines (Theme 1).
+- The window-title / audio-activity detection pairs well with our Process
+  Tap world (we already enumerate processes producing audio).
+- Requires notification permission; gate behind a feature flag (per Theme 1
+  mitigations) and a single `startRecording` entry point.
+- Domain file is portable; the notification + platform services and the
+  AppViewModel wiring need hand-merging.
+- Impact 5, Effort M, Horizon Next. *Cross-reference Theme 1.*
+
+### 12.3 - Export filename templates
+
+`AutomaticExportFileNameBuilder.swift` (310 lines) is a self-contained
+utility with zero coupling - templated export filenames (date, title,
+speaker, etc.). Pairs naturally with our Theme 8 export work and the
+watch-folder mirror.
+
+- Easiest cherry-pick on the list; near-literal copy plus a settings hook.
+- Impact 3, Effort S, Horizon Now.
+
+### 12.4 - Global dictation
+
+Upstream's system-wide dictation: speak via a global hotkey and insert the
+text into whatever app is focused. `GlobalDictation.swift`,
+`GlobalDictationPlatformServices.swift` (760 lines, Carbon hotkey +
+Accessibility insertion), and `GlobalDictationOverlayView.swift` (242).
+
+- This is a different product direction from "meeting transcription" - it
+  turns Lorre into a system dictation tool. Decide whether that fits this
+  fork's identity before investing.
+- Heavy: needs Accessibility permission, a Carbon global hotkey service, and
+  a pasteboard/paste-command insertion fallback. Highest effort, lowest fit.
+- If pursued, it overlaps with Theme 5's "global hotkeys" item.
+- Impact 2, Effort L, Horizon Later.
+
+### 12.5 - Model settings, but in OUR Settings scene
+
+Upstream keeps model settings inline in the sidebar
+(`SessionShelfModelSettingsView.swift`). We deliberately moved settings into
+the 4-tab Settings scene (`CMD+,`). So **do not** take upstream's sidebar
+placement - instead, surface the new model controls (ASR mode picker,
+batch-language picker incl. NL, live-engine picker) inside our existing
+`SpeechModelsSettingsTab.swift`.
+
+- This item is really "expose the 12.1 model options through our Settings UI"
+  rather than a separate feature.
+- The batch-language picker is where the 12.0 NL default becomes a
+  user-visible control.
+- Impact 3, Effort S, Horizon Now (depends on 12.1).
+
 ---
 
 ## Suggested release sequence
