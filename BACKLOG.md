@@ -419,6 +419,38 @@ moved (Sage + Settings scene). The pure domain/value files cherry-pick
 cleanly; anything touching `AppViewModel` wiring will need hand-merging,
 not a literal `git cherry-pick`.
 
+### Borrow vs rebuild map (file by file)
+
+Verified against upstream `f557dc5..upstream/master`. Three buckets:
+**Borrow** = copy almost verbatim; **Hand-merge** = additive but the file
+also moved on our side, so port the new bits in by hand; **Rebuild** =
+architecture diverged, use upstream only as a reference.
+
+| Upstream file | Verdict | Why |
+|---|---|---|
+| `Core/Domain/CallDetection.swift` (474) | **Borrow** | Pure value types + detection logic, no UI/VM coupling. |
+| `Tests/.../CallDetectionTests.swift` | **Borrow** | Comes with CallDetection; gives us coverage for free. |
+| `Core/Domain/GlobalDictation.swift` (155) | **Borrow** | Pure config types + text formatter. |
+| `Core/Export/AutomaticExportFileNameBuilder.swift` (310) | **Borrow** | Self-contained utility, zero coupling. |
+| `Core/Support/CallWatcherPlatformServices.swift` (122) | **Borrow** | Uses `NSWorkspace` + `CGWindowList` + AVFoundation - **not** ScreenCaptureKit, so it does **not** conflict with our Process Tap rewrite. Verify against our process-enumeration world. |
+| `Core/Support/CallPromptNotificationServices.swift` (204) | **Borrow** | `UserNotifications` behind a protocol; needs notif permission. |
+| `Core/Support/GlobalDictationPlatformServices.swift` (760) | **Borrow** | Carbon hotkey + Accessibility insertion; heavy but self-contained behind protocols. |
+| `Core/Domain/Protocols.swift` (+48) | **Hand-merge** | 4 new protocols (`CallWatcherService`, `CallPromptNotificationService`, `GlobalDictationHotKeyService`, `GlobalTextInsertionService`) - purely additive, append them. |
+| `Core/Support/AppDependencies.swift` (+42) | **Hand-merge** | Additive: 4 new service fields + their live/disabled wiring in the factory. Clean to port. |
+| `Core/Domain/Models.swift` (+456) | **Hand-merge** | New additive types (`BatchTranscriptionMode`, `BatchTranscriptionConfiguration`, `LiveTranscriptionPreset`, `AutomaticMarkdownExportConfiguration`, `CallWatcherConfiguration`, `GlobalDictationConfiguration`, `TranscriptAlternative`, `VocabularyBoostingEntry`). Our `Models.swift` also moved (schema work) - port type-by-type, keep `decodeIfPresent ?? default` and bump `schemaVersion` per our convention. |
+| `Core/Support/AppSettingsStore.swift` (+181) | **Hand-merge** | New setter methods are additive; new `AppSettings` fields need a `schemaVersion` bump + fixture migration test (our rule). |
+| `Core/Processing/FluidAudioAdapters.swift` (+572) | **Hand-merge** | Borrow the ASR model-selection logic; our capture pipeline (Process Tap CAF) feeds the same batch path, but validate buffer format + the live recognizer. |
+| `Core/Support/FluidAudioLiveStreamingRecognizer.swift` (+312) | **Hand-merge** | Live preset/model handling; verify against our mic buffer feed. |
+| `Package.swift` | **Hand-merge** | One-line FluidAudio `0.13.6 -> 0.15.0` bump; keep our `swift-tools-version: 6.3`, don't take upstream's. |
+| `Features/Shell/AppViewModel.swift` (+1818) | **Rebuild** | Do **not** cherry-pick. Ours diverged hard (Sage + Settings + Process Tap). Re-wire the new feature methods (call watcher, dictation, ASR selection, export config) into our VM by hand, upstream as reference. |
+| `Features/Shell/SessionShelfModelSettingsView.swift` | **Rebuild** | Upstream's sidebar placement conflicts with our Settings scene. Rebuild the controls inside our `SpeechModelsSettingsTab.swift`. |
+| `Features/Shell/GlobalDictationOverlayView.swift` (242) | **Rebuild** | SwiftUI; restyle to Sage tokens. Upstream as visual reference. |
+| `Features/Recorder/RecorderStageViews.swift`, `Features/Shell/SessionShelfSidebarView.swift`, `Features/Transcript/*` | **Rebuild** | Our Sage versions diverged; lift individual logic only, restyle. |
+
+Net: the *brains* (detection, dictation, export-naming, ASR selection) are
+borrowable; the *wiring and the chrome* (AppViewModel, the views, settings
+placement) is where we rebuild because our fork's architecture moved.
+
 ### 12.0 - Default to Dutch (NL), not English (highest priority for this fork)
 
 The most important item here and the smallest. Upstream's v3 model is
