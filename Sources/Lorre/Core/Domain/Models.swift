@@ -939,6 +939,12 @@ enum BatchTranscriptionLanguage: String, Codable, CaseIterable, Identifiable, Eq
         default: return rawValue.uppercased()
         }
     }
+
+    /// ASR language code for the FluidAudio hint and transcript metadata.
+    /// `nil` for `.automatic` (the model detects the language itself).
+    var languageCode: String? {
+        self == .automatic ? nil : rawValue
+    }
 }
 
 struct AppSettings: Codable, Equatable, Sendable {
