@@ -33,6 +33,7 @@ final class AppViewModel: ObservableObject {
     @Published private(set) var callWatcherConfiguration = CallWatcherConfiguration()
     @Published private(set) var callWatcherStatusLine: String = "Off"
     @Published private(set) var callPromptCandidate: CallDetectionCandidate?
+    @Published private(set) var automaticMarkdownExport = AutomaticMarkdownExportConfiguration()
     @Published private(set) var isStartingRecording = false
     @Published private(set) var isStoppingRecording = false
     @Published private(set) var recordingElapsedSeconds: Double = 0
@@ -1754,6 +1755,7 @@ final class AppViewModel: ObservableObject {
                         "audio_retained": deleteAudioAfterTranscription ? "false" : "true"
                     ]
                 )
+                await self.performAutomaticMarkdownExportIfNeeded(sessionID: sessionID, transcript: transcript)
                 await self.reloadSessions(selectMostRecentIfNeeded: false)
                 await MainActor.run {
                     if self.selectedSessionID == sessionID {
@@ -2271,6 +2273,98 @@ final class AppViewModel: ObservableObject {
         }
     }
 
+    // MARK: - Automatic Markdown export
+
+    var automaticMarkdownExportFileNamePreview: String {
+        AutomaticExportFileNameBuilder.previewFileName(template: automaticMarkdownExport.fileNameTemplate)
+    }
+
+    func setAutomaticMarkdownExportEnabled(_ isEnabled: Bool) {
+        var updated = automaticMarkdownExport
+        updated = AutomaticMarkdownExportConfiguration(
+            isEnabled: isEnabled,
+            folderPath: updated.folderPath,
+            fileNameTemplate: updated.fileNameTemplate
+        )
+        persistAutomaticMarkdownExport(updated)
+    }
+
+    func setAutomaticMarkdownExportFolderPath(_ path: String?) {
+        let updated = AutomaticMarkdownExportConfiguration(
+            isEnabled: automaticMarkdownExport.isEnabled,
+            folderPath: path,
+            fileNameTemplate: automaticMarkdownExport.fileNameTemplate
+        )
+        persistAutomaticMarkdownExport(updated)
+    }
+
+    func setAutomaticMarkdownExportFileNameTemplate(_ template: String) {
+        let updated = AutomaticMarkdownExportConfiguration(
+            isEnabled: automaticMarkdownExport.isEnabled,
+            folderPath: automaticMarkdownExport.folderPath,
+            fileNameTemplate: template
+        )
+        persistAutomaticMarkdownExport(updated)
+    }
+
+    private func persistAutomaticMarkdownExport(_ configuration: AutomaticMarkdownExportConfiguration) {
+        guard automaticMarkdownExport != configuration else { return }
+        let previous = automaticMarkdownExport
+        automaticMarkdownExport = configuration
+        Task { [weak self] in
+            guard let self else { return }
+            do {
+                _ = try await self.dependencies.settings.setAutomaticMarkdownExportConfiguration(configuration)
+            } catch {
+                await MainActor.run {
+                    self.automaticMarkdownExport = previous
+                    self.presentError(error, defaultTitle: "Could not save automatic export setting")
+                }
+            }
+        }
+    }
+
+    private func performAutomaticMarkdownExportIfNeeded(sessionID: UUID, transcript: TranscriptDocument) async {
+        let configuration = automaticMarkdownExport
+        guard configuration.isEnabled, let folderURL = configuration.folderURL else { return }
+        guard let session = try? await dependencies.store.loadSession(id: sessionID) else { return }
+
+        let fileName = AutomaticExportFileNameBuilder.fileName(
+            session: session,
+            transcript: transcript,
+            template: configuration.fileNameTemplate
+        )
+        let destinationURL = folderURL.appendingPathComponent(fileName)
+
+        do {
+            try FileManager.default.createDirectory(at: folderURL, withIntermediateDirectories: true)
+            _ = try await dependencies.exporter.export(
+                session: session,
+                transcript: transcript,
+                format: .markdown,
+                destinationURL: destinationURL
+            )
+            await dependencies.metrics.log(
+                name: "automatic_markdown_export_succeeded",
+                sessionId: sessionID,
+                attributes: ["file": fileName]
+            )
+        } catch {
+            await dependencies.metrics.log(
+                name: "automatic_markdown_export_failed",
+                sessionId: sessionID,
+                attributes: ["error": error.localizedDescription]
+            )
+            await MainActor.run {
+                self.banner = AppBanner(
+                    kind: .error,
+                    title: "Automatic export failed",
+                    message: "Could not write \(fileName) to \(configuration.folderDisplayName). \(error.localizedDescription)"
+                )
+            }
+        }
+    }
+
     // MARK: - Call watcher (auto-record prompt)
 
     var isCallWatcherEnabled: Bool {
@@ -2568,6 +2662,7 @@ final class AppViewModel: ObservableObject {
                     : restoredFolderIDs
 
                 self.callWatcherConfiguration = settings.callWatcher
+                self.automaticMarkdownExport = settings.automaticMarkdownExport
                 self.startCallPromptNotificationActions()
                 self.startCallWatcherIfNeeded()
             }

@@ -1,4 +1,7 @@
 import SwiftUI
+#if canImport(AppKit)
+import AppKit
+#endif
 
 struct GeneralSettingsTab: View {
     @ObservedObject var viewModel: AppViewModel
@@ -39,9 +42,52 @@ struct GeneralSettingsTab: View {
                         .foregroundStyle(.secondary)
                 }
             }
+
+            Section("Automatic export") {
+                Toggle("Save a Markdown copy when a transcript is ready", isOn: autoExportBinding)
+                    .disabled(!viewModel.automaticMarkdownExport.hasFolder)
+                HStack {
+                    Text("Folder")
+                    Spacer()
+                    Text(viewModel.automaticMarkdownExport.folderDisplayName)
+                        .foregroundStyle(.secondary)
+                    Button("Choose…") { chooseAutoExportFolder() }
+                }
+                TextField("Filename template", text: fileNameTemplateBinding)
+                Text("Tokens: {date}, {time}, {datetime}, {smart_title}, {keywords}, {duration}, {speaker_count}. Preview: \(viewModel.automaticMarkdownExportFileNamePreview)")
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+            }
         }
         .formStyle(.grouped)
         .navigationTitle("General")
+    }
+
+    private var autoExportBinding: Binding<Bool> {
+        Binding(
+            get: { viewModel.automaticMarkdownExport.isEnabled },
+            set: { viewModel.setAutomaticMarkdownExportEnabled($0) }
+        )
+    }
+
+    private var fileNameTemplateBinding: Binding<String> {
+        Binding(
+            get: { viewModel.automaticMarkdownExport.fileNameTemplate },
+            set: { viewModel.setAutomaticMarkdownExportFileNameTemplate($0) }
+        )
+    }
+
+    private func chooseAutoExportFolder() {
+        #if canImport(AppKit)
+        let panel = NSOpenPanel()
+        panel.canChooseDirectories = true
+        panel.canChooseFiles = false
+        panel.allowsMultipleSelection = false
+        panel.prompt = "Choose"
+        if panel.runModal() == .OK, let url = panel.url {
+            viewModel.setAutomaticMarkdownExportFolderPath(url.path(percentEncoded: false))
+        }
+        #endif
     }
 
     private var callWatcherBinding: Binding<Bool> {
