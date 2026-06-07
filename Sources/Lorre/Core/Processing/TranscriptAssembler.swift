@@ -64,7 +64,8 @@ enum TranscriptAssembler {
     static func assemble(
         sessionId: UUID,
         transcription: TranscriptionResult,
-        diarization: DiarizationResult?
+        diarization: DiarizationResult?,
+        languageHint: String? = nil
     ) -> TranscriptDocument {
         let diarizationSpans = refinedDiarizationSpans(diarization?.spans ?? [])
         let diarizationProfiles = Dictionary(
@@ -103,6 +104,7 @@ enum TranscriptAssembler {
 
         return TranscriptDocument(
             sessionId: sessionId,
+            languageHint: languageHint,
             sourceEngine: transcription.engineName,
             segments: segments,
             speakers: speakers.sorted { $0.id < $1.id }

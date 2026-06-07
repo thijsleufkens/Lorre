@@ -30,7 +30,10 @@ struct AppShellView: View {
         }
         .toolbar {
             ToolbarItem(placement: .principal) {
-                SourceModeSegmentedControl(viewModel: viewModel)
+                HStack(spacing: DS.Space.x2) {
+                    SourceModeSegmentedControl(viewModel: viewModel)
+                    TranscriptionLanguageMenuControl(viewModel: viewModel)
+                }
             }
             ToolbarItem(placement: .primaryAction) {
                 Button {
@@ -41,6 +44,23 @@ struct AppShellView: View {
                 .help("Open Settings")
             }
         }
+        .alert("Call detected", isPresented: callPromptPresented) {
+            Button("Record") { viewModel.acceptCallPromptTapped() }
+            Button("Not now", role: .cancel) { viewModel.dismissCallPromptTapped() }
+        } message: {
+            Text(viewModel.callPromptDetail)
+        }
+    }
+
+    private var callPromptPresented: Binding<Bool> {
+        Binding(
+            get: { viewModel.callPromptCandidate != nil },
+            set: { isPresented in
+                if !isPresented, viewModel.callPromptCandidate != nil {
+                    viewModel.dismissCallPromptTapped()
+                }
+            }
+        )
     }
 }
 

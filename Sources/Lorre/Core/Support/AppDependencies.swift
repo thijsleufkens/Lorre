@@ -10,6 +10,10 @@ struct AppDependencies {
     let speakerEnrollment: any SpeakerEnrollmentService
     let playback: any AudioPlaybackService
     let exporter: any ExportService
+    let callWatcher: any CallWatcherService
+    let callPromptNotifications: any CallPromptNotificationService
+    let globalDictationHotKey: any GlobalDictationHotKeyService
+    let globalTextInsertion: any GlobalTextInsertionService
     let processingCoordinator: ProcessingCoordinator
     let metrics: LocalMetricsLogger
     let fluidAudioStatus: String
@@ -64,6 +68,19 @@ struct AppDependencies {
             transcriptionService: transcriptionService,
             diarizationService: diarizationService
         )
+
+        #if canImport(AppKit)
+        let callWatcher: any CallWatcherService = MacCallWatcherService()
+        let callPromptNotifications: any CallPromptNotificationService = MacCallPromptNotificationService()
+        let globalDictationHotKey: any GlobalDictationHotKeyService = CarbonGlobalDictationHotKeyService()
+        let globalTextInsertion: any GlobalTextInsertionService = MacGlobalTextInsertionService()
+        #else
+        let callWatcher: any CallWatcherService = DisabledCallWatcherService()
+        let callPromptNotifications: any CallPromptNotificationService = DisabledCallPromptNotificationService()
+        let globalDictationHotKey: any GlobalDictationHotKeyService = DisabledGlobalDictationHotKeyService()
+        let globalTextInsertion: any GlobalTextInsertionService = DisabledGlobalTextInsertionService()
+        #endif
+
         return AppDependencies(
             store: store,
             knownSpeakerStore: knownSpeakerStore,
@@ -74,6 +91,10 @@ struct AppDependencies {
             speakerEnrollment: speakerEnrollmentService,
             playback: playback,
             exporter: MarkdownExportService(),
+            callWatcher: callWatcher,
+            callPromptNotifications: callPromptNotifications,
+            globalDictationHotKey: globalDictationHotKey,
+            globalTextInsertion: globalTextInsertion,
             processingCoordinator: coordinator,
             metrics: LocalMetricsLogger(),
             fluidAudioStatus: fluidAudioStatus,

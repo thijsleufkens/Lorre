@@ -502,7 +502,7 @@ struct TranscriptDocument: Codable, Equatable, Sendable {
     init(
         schemaVersion: Int = 1,
         sessionId: UUID,
-        languageHint: String? = "en",
+        languageHint: String? = nil,
         sourceEngine: String,
         segments: [TranscriptSegment],
         speakers: [SpeakerProfile],
@@ -825,6 +825,128 @@ struct SessionFolder: Identifiable, Codable, Equatable, Sendable {
     }
 }
 
+/// Optional auto-export of the finalized transcript as Markdown to a chosen
+/// folder, with a templated filename. Plain filesystem path (no security-scoped
+/// bookmark); opt-in and only considered enabled once a folder is set.
+struct AutomaticMarkdownExportConfiguration: Codable, Equatable, Sendable {
+    static let defaultFileNameTemplate = "{date}-{smart_title}.md"
+
+    var isEnabled: Bool
+    var folderPath: String?
+    var fileNameTemplate: String
+
+    init(
+        isEnabled: Bool = false,
+        folderPath: String? = nil,
+        fileNameTemplate: String = AutomaticMarkdownExportConfiguration.defaultFileNameTemplate
+    ) {
+        let normalizedPath = Self.normalizedFolderPath(folderPath)
+        self.folderPath = normalizedPath
+        self.isEnabled = isEnabled && normalizedPath != nil
+        self.fileNameTemplate = Self.normalizedFileNameTemplate(fileNameTemplate)
+    }
+
+    var folderURL: URL? {
+        guard let folderPath else { return nil }
+        return URL(fileURLWithPath: folderPath, isDirectory: true)
+    }
+
+    var hasFolder: Bool {
+        folderPath != nil
+    }
+
+    var folderDisplayName: String {
+        guard let folderPath else { return "No folder selected" }
+        let url = URL(fileURLWithPath: folderPath, isDirectory: true)
+        let name = url.lastPathComponent.trimmingCharacters(in: .whitespacesAndNewlines)
+        return name.isEmpty ? folderPath : name
+    }
+
+    static func normalizedFolderPath(_ rawValue: String?) -> String? {
+        guard let rawValue else { return nil }
+        let trimmed = rawValue.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return nil }
+        let expanded = (trimmed as NSString).expandingTildeInPath
+        return URL(fileURLWithPath: expanded, isDirectory: true)
+            .standardizedFileURL
+            .path(percentEncoded: false)
+    }
+
+    static func normalizedFileNameTemplate(_ rawValue: String?) -> String {
+        let trimmed = rawValue?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        return trimmed.isEmpty ? Self.defaultFileNameTemplate : trimmed
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case isEnabled
+        case folderPath
+        case fileNameTemplate
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        self.init(
+            isEnabled: try container.decodeIfPresent(Bool.self, forKey: .isEnabled) ?? false,
+            folderPath: try container.decodeIfPresent(String.self, forKey: .folderPath),
+            fileNameTemplate: try container.decodeIfPresent(String.self, forKey: .fileNameTemplate)
+                ?? Self.defaultFileNameTemplate
+        )
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(isEnabled, forKey: .isEnabled)
+        try container.encodeIfPresent(folderPath, forKey: .folderPath)
+        try container.encode(fileNameTemplate, forKey: .fileNameTemplate)
+    }
+}
+
+/// User-selectable batch ASR language for Parakeet's multilingual v3 model.
+/// Stays pure domain; the FluidAudio `Language` mapping lives in the adapter
+/// layer. Defaults to Dutch for this fork (most meetings are in NL).
+enum BatchTranscriptionLanguage: String, Codable, CaseIterable, Identifiable, Equatable, Sendable {
+    /// No explicit hint — the multilingual v3 model detects the language itself.
+    case automatic = "auto"
+    case dutch = "nl"
+    case english = "en"
+    case german = "de"
+    case french = "fr"
+    case spanish = "es"
+    case italian = "it"
+    case portuguese = "pt"
+    case polish = "pl"
+
+    var id: String { rawValue }
+
+    var displayName: String {
+        switch self {
+        case .automatic: return "Automatic"
+        case .dutch: return "Dutch"
+        case .english: return "English"
+        case .german: return "German"
+        case .french: return "French"
+        case .spanish: return "Spanish"
+        case .italian: return "Italian"
+        case .portuguese: return "Portuguese"
+        case .polish: return "Polish"
+        }
+    }
+
+    /// Short label for compact UI (toolbar menu).
+    var shortLabel: String {
+        switch self {
+        case .automatic: return "Auto"
+        default: return rawValue.uppercased()
+        }
+    }
+
+    /// ASR language code for the FluidAudio hint and transcript metadata.
+    /// `nil` for `.automatic` (the model detects the language itself).
+    var languageCode: String? {
+        self == .automatic ? nil : rawValue
+    }
+}
+
 struct AppSettings: Codable, Equatable, Sendable {
     var schemaVersion: Int
     var updatedAt: Date
@@ -838,6 +960,10 @@ struct AppSettings: Codable, Equatable, Sendable {
     var isLiveTranscriptionEnabled: Bool
     var isDeleteAudioAfterTranscriptionEnabled: Bool
     var isTranscriptConfidenceVisible: Bool
+    var batchTranscriptionLanguage: BatchTranscriptionLanguage
+    var callWatcher: CallWatcherConfiguration
+    var globalDictation: GlobalDictationConfiguration
+    var automaticMarkdownExport: AutomaticMarkdownExportConfiguration
     var vocabularyBoosting: VocabularyBoostingConfiguration
     var folders: [SessionFolder]
     var sidebarExpandedViewFilterIDs: [String]
@@ -856,6 +982,10 @@ struct AppSettings: Codable, Equatable, Sendable {
         isLiveTranscriptionEnabled: Bool = false,
         isDeleteAudioAfterTranscriptionEnabled: Bool = false,
         isTranscriptConfidenceVisible: Bool = false,
+        batchTranscriptionLanguage: BatchTranscriptionLanguage = .automatic,
+        callWatcher: CallWatcherConfiguration = .init(),
+        globalDictation: GlobalDictationConfiguration = .init(),
+        automaticMarkdownExport: AutomaticMarkdownExportConfiguration = .init(),
         vocabularyBoosting: VocabularyBoostingConfiguration = .init(),
         folders: [SessionFolder] = [],
         sidebarExpandedViewFilterIDs: [String] = [],
@@ -873,6 +1003,10 @@ struct AppSettings: Codable, Equatable, Sendable {
         self.isLiveTranscriptionEnabled = isLiveTranscriptionEnabled
         self.isDeleteAudioAfterTranscriptionEnabled = isDeleteAudioAfterTranscriptionEnabled
         self.isTranscriptConfidenceVisible = isTranscriptConfidenceVisible
+        self.batchTranscriptionLanguage = batchTranscriptionLanguage
+        self.callWatcher = callWatcher
+        self.globalDictation = globalDictation
+        self.automaticMarkdownExport = automaticMarkdownExport
         self.vocabularyBoosting = vocabularyBoosting
         self.folders = folders
         self.sidebarExpandedViewFilterIDs = sidebarExpandedViewFilterIDs
@@ -892,6 +1026,10 @@ struct AppSettings: Codable, Equatable, Sendable {
         case isLiveTranscriptionEnabled
         case isDeleteAudioAfterTranscriptionEnabled
         case isTranscriptConfidenceVisible
+        case batchTranscriptionLanguage
+        case callWatcher
+        case globalDictation
+        case automaticMarkdownExport
         case vocabularyBoosting
         case folders
         case sidebarExpandedViewFilterIDs
@@ -914,6 +1052,10 @@ struct AppSettings: Codable, Equatable, Sendable {
         self.isLiveTranscriptionEnabled = try container.decodeIfPresent(Bool.self, forKey: .isLiveTranscriptionEnabled) ?? false
         self.isDeleteAudioAfterTranscriptionEnabled = try container.decodeIfPresent(Bool.self, forKey: .isDeleteAudioAfterTranscriptionEnabled) ?? false
         self.isTranscriptConfidenceVisible = try container.decodeIfPresent(Bool.self, forKey: .isTranscriptConfidenceVisible) ?? false
+        self.batchTranscriptionLanguage = try container.decodeIfPresent(BatchTranscriptionLanguage.self, forKey: .batchTranscriptionLanguage) ?? .automatic
+        self.callWatcher = try container.decodeIfPresent(CallWatcherConfiguration.self, forKey: .callWatcher) ?? .init()
+        self.globalDictation = try container.decodeIfPresent(GlobalDictationConfiguration.self, forKey: .globalDictation) ?? .init()
+        self.automaticMarkdownExport = try container.decodeIfPresent(AutomaticMarkdownExportConfiguration.self, forKey: .automaticMarkdownExport) ?? .init()
         self.vocabularyBoosting = try container.decodeIfPresent(VocabularyBoostingConfiguration.self, forKey: .vocabularyBoosting) ?? .init()
         self.folders = try container.decodeIfPresent([SessionFolder].self, forKey: .folders) ?? []
         self.sidebarExpandedViewFilterIDs = try container.decodeIfPresent([String].self, forKey: .sidebarExpandedViewFilterIDs) ?? []
@@ -934,6 +1076,10 @@ struct AppSettings: Codable, Equatable, Sendable {
         try container.encode(isLiveTranscriptionEnabled, forKey: .isLiveTranscriptionEnabled)
         try container.encode(isDeleteAudioAfterTranscriptionEnabled, forKey: .isDeleteAudioAfterTranscriptionEnabled)
         try container.encode(isTranscriptConfidenceVisible, forKey: .isTranscriptConfidenceVisible)
+        try container.encode(batchTranscriptionLanguage, forKey: .batchTranscriptionLanguage)
+        try container.encode(callWatcher, forKey: .callWatcher)
+        try container.encode(globalDictation, forKey: .globalDictation)
+        try container.encode(automaticMarkdownExport, forKey: .automaticMarkdownExport)
         try container.encode(vocabularyBoosting, forKey: .vocabularyBoosting)
         try container.encode(folders, forKey: .folders)
         try container.encode(sidebarExpandedViewFilterIDs, forKey: .sidebarExpandedViewFilterIDs)

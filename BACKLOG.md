@@ -404,6 +404,174 @@ transcripts for external thinking tools.
   `LocalMetricsLogger` with a "Reveal diagnostics" command so users can
   share logs when filing issues. Impact 2, Effort S, Horizon Next.
 
+## Theme 12 - Upstream (Jesse / jjscholtes) cherry-pick candidates
+
+Our fork and upstream diverged at commit `f557dc5`. Our branch went deep on
+the CoreAudio Process Tap rewrite, the Studio Sage design, and the 4-tab
+Settings scene. Upstream went deep on dictation, call detection, and ASR
+model options. The items below are the upstream features worth pulling back
+into our fork, with integration notes specific to where our two codebases
+differ.
+
+**Status (branch `claude/fluidaudio-0.15-dutch-asr`, code complete, awaiting
+GUI verification):**
+- ✅ 12.0 Dutch default — done (batch language hint defaults to `.dutch`).
+- ✅ 12.1 FluidAudio 0.15 + language selection — done (v3 multilingual with
+  a real language hint; v2/Nemotron/Cohere modes not added — Cohere is an
+  external dependency that conflicts with local-only privacy).
+- ✅ 12.2 Call Watcher — done (detection engine + platform watcher +
+  notification prompt + auto-record, opt-in).
+- ✅ 12.3 Export templates — done (automatic Markdown export to a chosen
+  folder with token filenames).
+- ✅ 12.4 Global Dictation — done (hotkey → local transcribe → insert;
+  status via banners instead of a dedicated overlay view).
+- ✅ 12.5 Model settings in our Settings scene — language picker added to
+  `SpeechModelsSettingsTab`; call/dictation/export controls in
+  `GeneralSettingsTab` (not upstream's sidebar placement).
+
+**Still needs runtime verification (cannot be tested headless):** FluidAudio
+0.15 against our Process Tap audio, Dutch transcription quality, notification
+permission for Call Watcher, and Accessibility permission + packaging
+entitlements for Global Dictation text insertion.
+
+**Shared seam to watch:** upstream made huge edits to `AppViewModel.swift`
+(+1818 lines) and `Models.swift` (+456). Our versions of those files also
+moved (Sage + Settings scene). The pure domain/value files cherry-pick
+cleanly; anything touching `AppViewModel` wiring will need hand-merging,
+not a literal `git cherry-pick`.
+
+### Borrow vs rebuild map (file by file)
+
+Verified against upstream `f557dc5..upstream/master`. Three buckets:
+**Borrow** = copy almost verbatim; **Hand-merge** = additive but the file
+also moved on our side, so port the new bits in by hand; **Rebuild** =
+architecture diverged, use upstream only as a reference.
+
+| Upstream file | Verdict | Why |
+|---|---|---|
+| `Core/Domain/CallDetection.swift` (474) | **Borrow** | Pure value types + detection logic, no UI/VM coupling. |
+| `Tests/.../CallDetectionTests.swift` | **Borrow** | Comes with CallDetection; gives us coverage for free. |
+| `Core/Domain/GlobalDictation.swift` (155) | **Borrow** | Pure config types + text formatter. |
+| `Core/Export/AutomaticExportFileNameBuilder.swift` (310) | **Borrow** | Self-contained utility, zero coupling. |
+| `Core/Support/CallWatcherPlatformServices.swift` (122) | **Borrow** | Uses `NSWorkspace` + `CGWindowList` + AVFoundation - **not** ScreenCaptureKit, so it does **not** conflict with our Process Tap rewrite. Verify against our process-enumeration world. |
+| `Core/Support/CallPromptNotificationServices.swift` (204) | **Borrow** | `UserNotifications` behind a protocol; needs notif permission. |
+| `Core/Support/GlobalDictationPlatformServices.swift` (760) | **Borrow** | Carbon hotkey + Accessibility insertion; heavy but self-contained behind protocols. |
+| `Core/Domain/Protocols.swift` (+48) | **Hand-merge** | 4 new protocols (`CallWatcherService`, `CallPromptNotificationService`, `GlobalDictationHotKeyService`, `GlobalTextInsertionService`) - purely additive, append them. |
+| `Core/Support/AppDependencies.swift` (+42) | **Hand-merge** | Additive: 4 new service fields + their live/disabled wiring in the factory. Clean to port. |
+| `Core/Domain/Models.swift` (+456) | **Hand-merge** | New additive types (`BatchTranscriptionMode`, `BatchTranscriptionConfiguration`, `LiveTranscriptionPreset`, `AutomaticMarkdownExportConfiguration`, `CallWatcherConfiguration`, `GlobalDictationConfiguration`, `TranscriptAlternative`, `VocabularyBoostingEntry`). Our `Models.swift` also moved (schema work) - port type-by-type, keep `decodeIfPresent ?? default` and bump `schemaVersion` per our convention. |
+| `Core/Support/AppSettingsStore.swift` (+181) | **Hand-merge** | New setter methods are additive; new `AppSettings` fields need a `schemaVersion` bump + fixture migration test (our rule). |
+| `Core/Processing/FluidAudioAdapters.swift` (+572) | **Hand-merge** | Borrow the ASR model-selection logic; our capture pipeline (Process Tap CAF) feeds the same batch path, but validate buffer format + the live recognizer. |
+| `Core/Support/FluidAudioLiveStreamingRecognizer.swift` (+312) | **Hand-merge** | Live preset/model handling; verify against our mic buffer feed. |
+| `Package.swift` | **Hand-merge** | One-line FluidAudio `0.13.6 -> 0.15.0` bump; keep our `swift-tools-version: 6.3`, don't take upstream's. |
+| `Features/Shell/AppViewModel.swift` (+1818) | **Rebuild** | Do **not** cherry-pick. Ours diverged hard (Sage + Settings + Process Tap). Re-wire the new feature methods (call watcher, dictation, ASR selection, export config) into our VM by hand, upstream as reference. |
+| `Features/Shell/SessionShelfModelSettingsView.swift` | **Rebuild** | Upstream's sidebar placement conflicts with our Settings scene. Rebuild the controls inside our `SpeechModelsSettingsTab.swift`. |
+| `Features/Shell/GlobalDictationOverlayView.swift` (242) | **Rebuild** | SwiftUI; restyle to Sage tokens. Upstream as visual reference. |
+| `Features/Recorder/RecorderStageViews.swift`, `Features/Shell/SessionShelfSidebarView.swift`, `Features/Transcript/*` | **Rebuild** | Our Sage versions diverged; lift individual logic only, restyle. |
+
+Net: the *brains* (detection, dictation, export-naming, ASR selection) are
+borrowable; the *wiring and the chrome* (AppViewModel, the views, settings
+placement) is where we rebuild because our fork's architecture moved.
+
+### 12.0 - Default to Dutch (NL), not English (highest priority for this fork)
+
+The most important item here and the smallest. Upstream's v3 model is
+multilingual and already lists `nl` in `supportedLanguageCodes`
+(`["en","fr","de","es","it","pt","nl","pl"]`), but the **default is
+hardcoded to `"en"`** in several places (`languageHint = "en"`,
+`languageCode = "en"`). Most of the primary user's meetings are in Dutch,
+so an English default silently degrades the core transcript.
+
+- Make NL the default batch language / language hint for this fork (or a
+  first-run choice that we set to NL).
+- Confirm the v3 multilingual path is the default ASR mode (not the
+  English-only v2 path) so a Dutch meeting never lands on an English-only
+  model by accident.
+- Verify diarization + vocabulary boosting behave with NL.
+- Impact 5, Effort S, Horizon Now. *This one is worth doing even before any
+  other cherry-pick.*
+
+### 12.1 - FluidAudio 0.15 + selectable ASR models
+
+Upstream bumped FluidAudio `0.13.6 -> 0.15.0` and added selectable ASR
+paths: `Parakeet v3 multilingual` (default), `Parakeet v2 English-only`,
+`Parakeet + Cohere` (alternate draft), plus `Nemotron` streaming for the
+live preview. Lives in `Package.swift`, `FluidAudioAdapters.swift` (+572),
+`FluidAudioLiveStreamingRecognizer.swift`, and the model-mode types in
+`Models.swift`.
+
+- Pure quality win for the core task; this is the headline cherry-pick.
+- Risk: 0.15 may interact with our Process Tap audio pipeline differently
+  than upstream's ScreenCaptureKit path - validate the captured-buffer
+  format and live-streaming recognizer against a real recording before
+  trusting it.
+- For our fork, prefer the multilingual v3 path (see 12.0); v2 English-only
+  is a secondary option, not the default.
+- The `Parakeet + Cohere` draft pulls in an external/hosted dependency -
+  check whether it conflicts with our local-only privacy stance before
+  enabling it (it may belong on the "out of scope" list).
+- Impact 5, Effort M, Horizon Now.
+
+### 12.2 - Call Watcher (folds into Theme 1)
+
+Upstream's `CallDetection.swift` (474 lines, pure value types, with
+`CallDetectionTests.swift`) plus `CallPromptNotificationServices.swift` and
+`CallWatcherPlatformServices.swift` are a **working implementation of the
+auto-record detection that our Theme 1 only specifies**. It detects that a
+call/meeting has started (window-title hints, audio-activity summary,
+capture-device usage, confidence bands) and prompts via a user notification.
+
+- Treat this as the starting point for Theme 1 V1 rather than building the
+  composite start-signal from scratch. Map upstream's `CallSignalSample` /
+  `CallDetectionCandidate` / confidence bands onto our Armed/Recording state
+  machines (Theme 1).
+- The window-title / audio-activity detection pairs well with our Process
+  Tap world (we already enumerate processes producing audio).
+- Requires notification permission; gate behind a feature flag (per Theme 1
+  mitigations) and a single `startRecording` entry point.
+- Domain file is portable; the notification + platform services and the
+  AppViewModel wiring need hand-merging.
+- Impact 5, Effort M, Horizon Next. *Cross-reference Theme 1.*
+
+### 12.3 - Export filename templates
+
+`AutomaticExportFileNameBuilder.swift` (310 lines) is a self-contained
+utility with zero coupling - templated export filenames (date, title,
+speaker, etc.). Pairs naturally with our Theme 8 export work and the
+watch-folder mirror.
+
+- Easiest cherry-pick on the list; near-literal copy plus a settings hook.
+- Impact 3, Effort S, Horizon Now.
+
+### 12.4 - Global dictation
+
+Upstream's system-wide dictation: speak via a global hotkey and insert the
+text into whatever app is focused. `GlobalDictation.swift`,
+`GlobalDictationPlatformServices.swift` (760 lines, Carbon hotkey +
+Accessibility insertion), and `GlobalDictationOverlayView.swift` (242).
+
+- This is a different product direction from "meeting transcription" - it
+  turns Lorre into a system dictation tool. Decide whether that fits this
+  fork's identity before investing.
+- Heavy: needs Accessibility permission, a Carbon global hotkey service, and
+  a pasteboard/paste-command insertion fallback. Highest effort, lowest fit.
+- If pursued, it overlaps with Theme 5's "global hotkeys" item.
+- Impact 2, Effort L, Horizon Later.
+
+### 12.5 - Model settings, but in OUR Settings scene
+
+Upstream keeps model settings inline in the sidebar
+(`SessionShelfModelSettingsView.swift`). We deliberately moved settings into
+the 4-tab Settings scene (`CMD+,`). So **do not** take upstream's sidebar
+placement - instead, surface the new model controls (ASR mode picker,
+batch-language picker incl. NL, live-engine picker) inside our existing
+`SpeechModelsSettingsTab.swift`.
+
+- This item is really "expose the 12.1 model options through our Settings UI"
+  rather than a separate feature.
+- The batch-language picker is where the 12.0 NL default becomes a
+  user-visible control.
+- Impact 3, Effort S, Horizon Now (depends on 12.1).
+
 ---
 
 ## Suggested release sequence

@@ -12,7 +12,7 @@ let package = Package(
         .executable(name: "Lorre", targets: ["Lorre"])
     ],
     dependencies: [
-        .package(url: "https://github.com/FluidInference/FluidAudio.git", from: "0.13.6")
+        .package(url: "https://github.com/FluidInference/FluidAudio.git", from: "0.15.0")
     ],
     targets: [
         .executableTarget(

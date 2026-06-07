@@ -30,6 +30,14 @@ final class AppViewModel: ObservableObject {
     @Published private(set) var activeTranscript: TranscriptDocument?
     @Published private(set) var isLoading = true
     @Published private(set) var isRecording = false
+    @Published private(set) var callWatcherConfiguration = CallWatcherConfiguration()
+    @Published private(set) var callWatcherStatusLine: String = "Off"
+    @Published private(set) var callPromptCandidate: CallDetectionCandidate?
+    @Published private(set) var automaticMarkdownExport = AutomaticMarkdownExportConfiguration()
+    @Published private(set) var globalDictationConfiguration = GlobalDictationConfiguration()
+    @Published private(set) var globalDictationPhase: GlobalDictationPhase = .idle
+    @Published private(set) var globalDictationStatusLine: String = ""
+    @Published private(set) var globalDictationTranscriptText: String = ""
     @Published private(set) var isStartingRecording = false
     @Published private(set) var isStoppingRecording = false
     @Published private(set) var recordingElapsedSeconds: Double = 0
@@ -55,6 +63,7 @@ final class AppViewModel: ObservableObject {
     @Published private(set) var diarizationEngine: DiarizationEngine = .offlineVbx
     @Published private(set) var diarizationExpectedSpeakerCountHint: DiarizationSpeakerCountHint = .auto
     @Published private(set) var isDiarizationDebugExportEnabled: Bool = false
+    @Published private(set) var batchTranscriptionLanguage: BatchTranscriptionLanguage = .automatic
     @Published private(set) var isVocabularyBoostingEnabled: Bool = false
     @Published var customVocabularySimpleFormatTerms: String = ""
     @Published private(set) var selectedRecordingSource: RecordingSource = .microphone
@@ -76,6 +85,11 @@ final class AppViewModel: ObservableObject {
     private var playbackMonitorTask: Task<Void, Never>?
     private var waveformLoadTask: Task<Void, Never>?
     private var recordingSourceChangeTask: Task<Void, Never>?
+    private var callWatcherTask: Task<Void, Never>?
+    private var callPromptNotificationTask: Task<Void, Never>?
+    private var callPromptCandidatesByFingerprint: [String: CallDetectionCandidate] = [:]
+    private var handledCallPromptActionFingerprints: Set<String> = []
+    private var currentGlobalDictationTarget: GlobalTextInsertionTarget?
     private var currentRecordingStartedAt: Date?
     private var currentProcessingTasks: [UUID: Task<Void, Never>] = [:]
     private var cachedFilteredSessions: [SessionManifest] = []
@@ -105,6 +119,8 @@ final class AppViewModel: ObservableObject {
         waveformLoadTask?.cancel()
         recordingSourceChangeTask?.cancel()
         sidebarExpansionSaveTask?.cancel()
+        callWatcherTask?.cancel()
+        callPromptNotificationTask?.cancel()
         currentProcessingTasks.values.forEach { $0.cancel() }
     }
 
@@ -1307,6 +1323,38 @@ final class AppViewModel: ObservableObject {
         }
     }
 
+    func setBatchTranscriptionLanguage(_ language: BatchTranscriptionLanguage) {
+        guard batchTranscriptionLanguage != language else { return }
+        let previous = batchTranscriptionLanguage
+        batchTranscriptionLanguage = language
+
+        Task { [weak self] in
+            guard let self else { return }
+            do {
+                await self.dependencies.transcription.setBatchTranscriptionLanguage(language)
+                _ = try await self.dependencies.settings.setBatchTranscriptionLanguage(language)
+                await self.dependencies.metrics.log(
+                    name: "batch_transcription_language_changed",
+                    attributes: ["language": language.rawValue]
+                )
+                await MainActor.run {
+                    self.banner = AppBanner(
+                        kind: .info,
+                        title: "Transcription language: \(language.displayName)",
+                        message: language == .automatic
+                            ? "New recordings will auto-detect the spoken language."
+                            : "New recordings will be transcribed with a \(language.displayName) language hint."
+                    )
+                }
+            } catch {
+                await MainActor.run {
+                    self.batchTranscriptionLanguage = previous
+                    self.presentError(error, defaultTitle: "Could not save transcription language")
+                }
+            }
+        }
+    }
+
     func setDiarizationDebugExportEnabled(_ isEnabled: Bool) {
         guard isDiarizationDebugExportEnabled != isEnabled else { return }
         let previous = isDiarizationDebugExportEnabled
@@ -1688,6 +1736,7 @@ final class AppViewModel: ObservableObject {
                     diarizationExpectedSpeakers: self.diarizationExpectedSpeakerCountHint,
                     exportDiarizationDebugArtifact: self.isDiarizationDebugExportEnabled,
                     deleteAudioAfterTranscription: deleteAudioAfterTranscription,
+                    languageCode: self.batchTranscriptionLanguage.languageCode,
                     onProgress: { [weak self] update in
                         guard let self else { return }
                         await MainActor.run {
@@ -1714,6 +1763,7 @@ final class AppViewModel: ObservableObject {
                         "audio_retained": deleteAudioAfterTranscription ? "false" : "true"
                     ]
                 )
+                await self.performAutomaticMarkdownExportIfNeeded(sessionID: sessionID, transcript: transcript)
                 await self.reloadSessions(selectMostRecentIfNeeded: false)
                 await MainActor.run {
                     if self.selectedSessionID == sessionID {
@@ -2231,6 +2281,601 @@ final class AppViewModel: ObservableObject {
         }
     }
 
+    // MARK: - Global dictation
+
+    var isGlobalDictationEnabled: Bool {
+        globalDictationConfiguration.isEnabled
+    }
+
+    var isGlobalDictationBusy: Bool {
+        globalDictationPhase.isBusy
+    }
+
+    func setGlobalDictationEnabled(_ isEnabled: Bool) {
+        guard globalDictationConfiguration.isEnabled != isEnabled else { return }
+        let previous = globalDictationConfiguration
+        var updated = globalDictationConfiguration
+        updated.isEnabled = isEnabled
+        globalDictationConfiguration = updated
+        registerGlobalDictationHotKeyIfNeeded()
+
+        Task { [weak self] in
+            guard let self else { return }
+            do {
+                _ = try await self.dependencies.settings.setGlobalDictationConfiguration(updated)
+                await self.dependencies.metrics.log(
+                    name: "global_dictation_toggled",
+                    attributes: ["enabled": isEnabled ? "true" : "false"]
+                )
+            } catch {
+                await MainActor.run {
+                    self.globalDictationConfiguration = previous
+                    self.registerGlobalDictationHotKeyIfNeeded()
+                    self.presentError(error, defaultTitle: "Could not save dictation setting")
+                }
+            }
+        }
+    }
+
+    func setGlobalDictationShortcut(_ shortcut: GlobalDictationShortcutChoice) {
+        guard globalDictationConfiguration.shortcut != shortcut else { return }
+        let previous = globalDictationConfiguration
+        var updated = globalDictationConfiguration
+        updated.shortcut = shortcut
+        globalDictationConfiguration = updated
+        registerGlobalDictationHotKeyIfNeeded()
+
+        Task { [weak self] in
+            guard let self else { return }
+            do {
+                _ = try await self.dependencies.settings.setGlobalDictationConfiguration(updated)
+            } catch {
+                await MainActor.run {
+                    self.globalDictationConfiguration = previous
+                    self.registerGlobalDictationHotKeyIfNeeded()
+                    self.presentError(error, defaultTitle: "Could not save dictation shortcut")
+                }
+            }
+        }
+    }
+
+    func startGlobalDictationTapped() {
+        startGlobalDictation()
+    }
+
+    func stopGlobalDictationTapped() {
+        stopGlobalDictationAndInsert()
+    }
+
+    func cancelGlobalDictationTapped() {
+        guard globalDictationPhase == .listening else { return }
+        globalDictationPhase = .idle
+        globalDictationStatusLine = "Dictation cancelled."
+        currentGlobalDictationTarget = nil
+        Task { [weak self] in
+            guard let self else { return }
+            try? await self.dependencies.recorder.cancelRecording()
+        }
+    }
+
+    func dismissGlobalDictationOverlay() {
+        guard !globalDictationPhase.isBusy else { return }
+        globalDictationPhase = .idle
+        globalDictationStatusLine = ""
+        globalDictationTranscriptText = ""
+    }
+
+    private func registerGlobalDictationHotKeyIfNeeded() {
+        dependencies.globalDictationHotKey.unregister()
+        guard globalDictationConfiguration.isEnabled else { return }
+        do {
+            try dependencies.globalDictationHotKey.register(shortcut: globalDictationConfiguration.shortcut) { [weak self] in
+                self?.globalDictationHotKeyPressed()
+            }
+        } catch {
+            presentError(error, defaultTitle: "Could not register dictation shortcut")
+        }
+    }
+
+    private func globalDictationHotKeyPressed() {
+        if globalDictationPhase == .listening {
+            stopGlobalDictationAndInsert()
+        } else {
+            startGlobalDictation()
+        }
+    }
+
+    private func startGlobalDictation() {
+        guard globalDictationConfiguration.isEnabled else {
+            banner = AppBanner(
+                kind: .info,
+                title: "Global dictation is off",
+                message: "Enable Global Dictation in settings before using the shortcut."
+            )
+            return
+        }
+        guard !isStartingRecording, !isRecording, !isStoppingRecording, !isGlobalDictationBusy else {
+            banner = AppBanner(
+                kind: .info,
+                title: "Dictation unavailable",
+                message: "Finish the active recording or dictation before starting another capture."
+            )
+            return
+        }
+
+        let preparation = dependencies.globalTextInsertion.prepareTarget(promptForPermission: true)
+        guard case let .ready(target) = preparation else {
+            globalDictationPhase = .failed
+            globalDictationStatusLine = preparation.userFacingMessage
+            banner = AppBanner(
+                kind: .error,
+                title: "Cannot start global dictation",
+                message: preparation.userFacingMessage
+            )
+            return
+        }
+
+        stopPlaybackAndResetState()
+        banner = nil
+        currentGlobalDictationTarget = target
+        globalDictationTranscriptText = ""
+        globalDictationStatusLine = "Listening for speech"
+        globalDictationPhase = .listening
+
+        Task { [weak self] in
+            guard let self else { return }
+            do {
+                await MainActor.run {
+                    self.applyCurrentRuntimeConfiguration()
+                }
+                await self.dependencies.recorder.setLiveTranscriptionEnabled(false)
+                try await self.dependencies.recorder.startRecording(RecordingRequest(source: .microphone))
+                await self.dependencies.metrics.log(
+                    name: "global_dictation_started",
+                    attributes: ["target_app": target.appName]
+                )
+            } catch {
+                await MainActor.run {
+                    self.globalDictationPhase = .failed
+                    self.globalDictationStatusLine = error.localizedDescription
+                    self.currentGlobalDictationTarget = nil
+                    self.presentError(error, defaultTitle: "Could not start global dictation")
+                }
+            }
+        }
+    }
+
+    private func stopGlobalDictationAndInsert() {
+        guard globalDictationPhase == .listening, let target = currentGlobalDictationTarget else { return }
+        globalDictationPhase = .transcribing
+        globalDictationStatusLine = "Stopping capture…"
+
+        Task { [weak self] in
+            guard let self else { return }
+            let temporaryDirectory = FileManager.default.temporaryDirectory
+                .appendingPathComponent("LorreGlobalDictation-\(UUID().uuidString)", isDirectory: true)
+            defer { try? FileManager.default.removeItem(at: temporaryDirectory) }
+
+            do {
+                let fileLayout = await self.dependencies.recorder.recordingFileLayout(for: .microphone)
+                _ = try await self.dependencies.recorder.stopRecording(in: temporaryDirectory, fileLayout: fileLayout)
+                let audioURL = temporaryDirectory.appendingPathComponent(fileLayout.audioFileName)
+
+                await MainActor.run { self.globalDictationStatusLine = "Preparing local speech model…" }
+                try await self.dependencies.transcription.ensureModelsReady { [weak self] update in
+                    guard let self else { return }
+                    await MainActor.run { self.globalDictationStatusLine = update.label }
+                }
+
+                await MainActor.run { self.globalDictationStatusLine = "Transcribing dictated text…" }
+                let result = try await self.dependencies.transcription.transcribe(
+                    url: audioURL,
+                    sessionTitle: "Global Dictation",
+                    source: .microphone
+                )
+                let text = GlobalDictationTextFormatter.insertionText(from: result)
+                guard !text.isEmpty else {
+                    throw LorreError.processingFailed("No speech was transcribed. Try again closer to the microphone.")
+                }
+
+                await MainActor.run {
+                    self.globalDictationTranscriptText = text
+                    self.globalDictationPhase = .inserting
+                    self.globalDictationStatusLine = "Inserting text into \(target.displayName)…"
+                }
+
+                let insertion = await self.dependencies.globalTextInsertion.insert(text, into: target)
+                await MainActor.run {
+                    switch insertion {
+                    case .inserted:
+                        self.globalDictationPhase = .inserted
+                        self.globalDictationStatusLine = "Inserted \(text.count) characters into \(target.displayName)."
+                        self.banner = AppBanner(
+                            kind: .success,
+                            title: "Dictation inserted",
+                            message: "Text was inserted into \(target.displayName)."
+                        )
+                    case let .failed(_, message):
+                        self.globalDictationPhase = .failed
+                        self.globalDictationStatusLine = message
+                        self.dependencies.globalTextInsertion.copyToClipboard(text)
+                        self.banner = AppBanner(
+                            kind: .error,
+                            title: "Dictation insertion failed",
+                            message: "\(message) The text was copied to the clipboard instead."
+                        )
+                    }
+                    self.currentGlobalDictationTarget = nil
+                }
+            } catch {
+                await MainActor.run {
+                    self.globalDictationPhase = .failed
+                    self.globalDictationStatusLine = error.localizedDescription
+                    self.currentGlobalDictationTarget = nil
+                    self.presentError(error, defaultTitle: "Global dictation failed")
+                }
+            }
+        }
+    }
+
+    // MARK: - Automatic Markdown export
+
+    var automaticMarkdownExportFileNamePreview: String {
+        AutomaticExportFileNameBuilder.previewFileName(template: automaticMarkdownExport.fileNameTemplate)
+    }
+
+    func setAutomaticMarkdownExportEnabled(_ isEnabled: Bool) {
+        var updated = automaticMarkdownExport
+        updated = AutomaticMarkdownExportConfiguration(
+            isEnabled: isEnabled,
+            folderPath: updated.folderPath,
+            fileNameTemplate: updated.fileNameTemplate
+        )
+        persistAutomaticMarkdownExport(updated)
+    }
+
+    func setAutomaticMarkdownExportFolderPath(_ path: String?) {
+        let updated = AutomaticMarkdownExportConfiguration(
+            isEnabled: automaticMarkdownExport.isEnabled,
+            folderPath: path,
+            fileNameTemplate: automaticMarkdownExport.fileNameTemplate
+        )
+        persistAutomaticMarkdownExport(updated)
+    }
+
+    func setAutomaticMarkdownExportFileNameTemplate(_ template: String) {
+        let updated = AutomaticMarkdownExportConfiguration(
+            isEnabled: automaticMarkdownExport.isEnabled,
+            folderPath: automaticMarkdownExport.folderPath,
+            fileNameTemplate: template
+        )
+        persistAutomaticMarkdownExport(updated)
+    }
+
+    private func persistAutomaticMarkdownExport(_ configuration: AutomaticMarkdownExportConfiguration) {
+        guard automaticMarkdownExport != configuration else { return }
+        let previous = automaticMarkdownExport
+        automaticMarkdownExport = configuration
+        Task { [weak self] in
+            guard let self else { return }
+            do {
+                _ = try await self.dependencies.settings.setAutomaticMarkdownExportConfiguration(configuration)
+            } catch {
+                await MainActor.run {
+                    self.automaticMarkdownExport = previous
+                    self.presentError(error, defaultTitle: "Could not save automatic export setting")
+                }
+            }
+        }
+    }
+
+    private func performAutomaticMarkdownExportIfNeeded(sessionID: UUID, transcript: TranscriptDocument) async {
+        let configuration = automaticMarkdownExport
+        guard configuration.isEnabled, let folderURL = configuration.folderURL else { return }
+        guard let session = try? await dependencies.store.loadSession(id: sessionID) else { return }
+
+        let fileName = AutomaticExportFileNameBuilder.fileName(
+            session: session,
+            transcript: transcript,
+            template: configuration.fileNameTemplate
+        )
+        let destinationURL = folderURL.appendingPathComponent(fileName)
+        let jsonURL = destinationURL.deletingPathExtension().appendingPathExtension("json")
+
+        // Tracks which file we're writing so a failure names the right one.
+        var failingFileName = fileName
+        do {
+            try FileManager.default.createDirectory(at: folderURL, withIntermediateDirectories: true)
+            failingFileName = destinationURL.lastPathComponent
+            _ = try await dependencies.exporter.export(
+                session: session,
+                transcript: transcript,
+                format: .markdown,
+                destinationURL: destinationURL
+            )
+            failingFileName = jsonURL.lastPathComponent
+            _ = try await dependencies.exporter.export(
+                session: session,
+                transcript: transcript,
+                format: .json,
+                destinationURL: jsonURL
+            )
+            await dependencies.metrics.log(
+                name: "automatic_markdown_export_succeeded",
+                sessionId: sessionID,
+                attributes: ["file": fileName]
+            )
+        } catch {
+            let failedFile = failingFileName
+            await dependencies.metrics.log(
+                name: "automatic_markdown_export_failed",
+                sessionId: sessionID,
+                attributes: ["error": error.localizedDescription, "file": failedFile]
+            )
+            await MainActor.run {
+                self.banner = AppBanner(
+                    kind: .error,
+                    title: "Automatic export failed",
+                    message: "Could not write \(failedFile) to \(configuration.folderDisplayName). \(error.localizedDescription)"
+                )
+            }
+        }
+    }
+
+    // MARK: - Call watcher (auto-record prompt)
+
+    var isCallWatcherEnabled: Bool {
+        callWatcherConfiguration.isEnabled
+    }
+
+    var callWatcherSummary: String {
+        callWatcherConfiguration.isEnabled ? callWatcherStatusLine : "Off"
+    }
+
+    var callPromptDetail: String {
+        guard let candidate = callPromptCandidate else { return "" }
+        return "\(candidate.appDisplayName) looks like a call. Record with \(candidate.recommendedRecordingSource.label)?"
+    }
+
+    func setCallWatcherEnabled(_ isEnabled: Bool) {
+        guard callWatcherConfiguration.isEnabled != isEnabled else { return }
+        let previous = callWatcherConfiguration
+        var updated = callWatcherConfiguration
+        updated.isEnabled = isEnabled
+        callWatcherConfiguration = updated
+        if let candidate = callPromptCandidate {
+            removeCallPromptNotification(fingerprint: candidate.fingerprint)
+        }
+        callPromptCandidate = nil
+        startCallWatcherIfNeeded()
+
+        Task { [weak self] in
+            guard let self else { return }
+            do {
+                if isEnabled {
+                    _ = await self.dependencies.callPromptNotifications.requestAuthorizationIfNeeded()
+                }
+                _ = try await self.dependencies.settings.setCallWatcherConfiguration(updated)
+                await self.dependencies.metrics.log(
+                    name: "call_watcher_toggled",
+                    attributes: ["enabled": isEnabled ? "true" : "false"]
+                )
+            } catch {
+                await MainActor.run {
+                    self.callWatcherConfiguration = previous
+                    self.startCallWatcherIfNeeded()
+                    self.presentError(error, defaultTitle: "Could not save call watcher setting")
+                }
+            }
+        }
+    }
+
+    func setCallWatcherDefaultRecordingSource(_ source: RecordingSource) {
+        guard callWatcherConfiguration.defaultRecordingSource != source else { return }
+        let previous = callWatcherConfiguration
+        var updated = callWatcherConfiguration
+        updated.defaultRecordingSource = source
+        callWatcherConfiguration = updated
+        if callWatcherConfiguration.isEnabled {
+            startCallWatcherIfNeeded()
+        }
+
+        Task { [weak self] in
+            guard let self else { return }
+            do {
+                _ = try await self.dependencies.settings.setCallWatcherConfiguration(updated)
+            } catch {
+                await MainActor.run {
+                    self.callWatcherConfiguration = previous
+                    if self.callWatcherConfiguration.isEnabled {
+                        self.startCallWatcherIfNeeded()
+                    }
+                    self.presentError(error, defaultTitle: "Could not save call watcher source")
+                }
+            }
+        }
+    }
+
+    func acceptCallPromptTapped() {
+        guard let candidate = callPromptCandidate, claimCallPromptAction(for: candidate) else { return }
+        callWatcherStatusLine = "Recording from call prompt"
+        startRecording(source: candidate.recommendedRecordingSource, startReason: "call_prompt")
+    }
+
+    func dismissCallPromptTapped() {
+        guard let candidate = callPromptCandidate, claimCallPromptAction(for: candidate) else { return }
+        callWatcherStatusLine = callWatcherConfiguration.isEnabled ? "Dismissed. Listening for a new call." : "Off"
+        Task { [dependencies, cooldownSeconds = callWatcherConfiguration.cooldownSeconds] in
+            await dependencies.callWatcher.suppressPrompt(for: candidate, cooldownSeconds: cooldownSeconds)
+        }
+    }
+
+    func disableCallWatcherFromPromptTapped() {
+        callPromptCandidate = nil
+        setCallWatcherEnabled(false)
+    }
+
+    private func startRecording(source: RecordingSource, startReason: String) {
+        selectedRecordingSource = source
+        Task { [dependencies] in
+            await dependencies.metrics.log(name: "record_start_reason", attributes: ["reason": startReason])
+        }
+        startRecordingTapped()
+    }
+
+    private func startCallWatcherIfNeeded() {
+        callWatcherTask?.cancel()
+        callWatcherTask = nil
+        callPromptCandidate = nil
+        callPromptCandidatesByFingerprint.removeAll()
+        handledCallPromptActionFingerprints.removeAll()
+
+        guard callWatcherConfiguration.isEnabled else {
+            callWatcherStatusLine = "Off"
+            return
+        }
+
+        let configuration = callWatcherConfiguration
+        callWatcherStatusLine = "Listening for calls…"
+        callWatcherTask = Task { [weak self] in
+            guard let self else { return }
+            let stream = await self.dependencies.callWatcher.makeDetectionStream(configuration: configuration)
+            for await event in stream {
+                guard !Task.isCancelled else { return }
+                await MainActor.run {
+                    self.handleCallDetectionEvent(event)
+                }
+            }
+        }
+    }
+
+    private func startCallPromptNotificationActions() {
+        guard callPromptNotificationTask == nil else { return }
+        callPromptNotificationTask = Task { [weak self] in
+            guard let self else { return }
+            let stream = await self.dependencies.callPromptNotifications.makeActionStream()
+            for await action in stream {
+                guard !Task.isCancelled else { return }
+                await MainActor.run {
+                    self.handleCallPromptNotificationAction(action)
+                }
+            }
+        }
+    }
+
+    private func handleCallDetectionEvent(_ event: CallDetectionEvent) {
+        switch event {
+        case let .candidateDetected(candidate):
+            guard callWatcherConfiguration.isEnabled else { return }
+            guard !isStartingRecording, !isRecording, !isStoppingRecording, !isGlobalDictationBusy else {
+                callWatcherStatusLine = "Call-like activity detected. Recorder is busy."
+                return
+            }
+            guard callPromptCandidatesByFingerprint[candidate.fingerprint] == nil,
+                  !handledCallPromptActionFingerprints.contains(candidate.fingerprint)
+            else {
+                return
+            }
+
+            callPromptCandidatesByFingerprint[candidate.fingerprint] = candidate
+            callPromptCandidate = candidate
+            callWatcherStatusLine = "Call-like activity detected in \(candidate.appDisplayName)"
+            Task { [weak self, dependencies] in
+                let didShowNotification = await dependencies.callPromptNotifications.showCallPrompt(for: candidate)
+                if !didShowNotification {
+                    await MainActor.run {
+                        guard let self,
+                              self.callPromptCandidate?.fingerprint == candidate.fingerprint,
+                              self.callWatcherConfiguration.isEnabled
+                        else {
+                            return
+                        }
+                        self.callWatcherStatusLine = "Call detected in \(candidate.appDisplayName). Showing the prompt in Lorre."
+                        self.requestUserAttentionForCallPromptFallback()
+                    }
+                }
+                await dependencies.metrics.log(
+                    name: "call_prompt_shown",
+                    attributes: [
+                        "app": candidate.appDisplayName,
+                        "confidence": "\(candidate.confidenceScore)",
+                        "source": candidate.recommendedRecordingSource.rawValue,
+                        "notification": didShowNotification ? "true" : "false"
+                    ]
+                )
+            }
+
+        case let .candidateEnded(fingerprint):
+            removeCallPromptNotification(fingerprint: fingerprint)
+            callPromptCandidatesByFingerprint[fingerprint] = nil
+            handledCallPromptActionFingerprints.remove(fingerprint)
+            if callPromptCandidate?.fingerprint == fingerprint {
+                callPromptCandidate = nil
+            }
+            callWatcherStatusLine = callWatcherConfiguration.isEnabled ? "Listening for calls…" : "Off"
+        }
+    }
+
+    private func callPromptCandidate(for fingerprint: String) -> CallDetectionCandidate? {
+        if callPromptCandidate?.fingerprint == fingerprint {
+            return callPromptCandidate
+        }
+        return callPromptCandidatesByFingerprint[fingerprint]
+    }
+
+    @discardableResult
+    private func claimCallPromptAction(for candidate: CallDetectionCandidate) -> Bool {
+        guard !handledCallPromptActionFingerprints.contains(candidate.fingerprint) else {
+            return false
+        }
+        handledCallPromptActionFingerprints.insert(candidate.fingerprint)
+        callPromptCandidatesByFingerprint[candidate.fingerprint] = nil
+        if callPromptCandidate?.fingerprint == candidate.fingerprint {
+            callPromptCandidate = nil
+        }
+        removeCallPromptNotification(fingerprint: candidate.fingerprint)
+        return true
+    }
+
+    private func removeCallPromptNotification(fingerprint: String) {
+        Task { [dependencies] in
+            await dependencies.callPromptNotifications.removeCallPrompt(fingerprint: fingerprint)
+        }
+    }
+
+    private func requestUserAttentionForCallPromptFallback() {
+        #if canImport(AppKit)
+        NSApplication.shared.requestUserAttention(.informationalRequest)
+        #endif
+    }
+
+    private func handleCallPromptNotificationAction(_ action: CallPromptNotificationAction) {
+        switch action {
+        case let .accept(fingerprint):
+            guard let candidate = callPromptCandidate(for: fingerprint),
+                  claimCallPromptAction(for: candidate)
+            else {
+                return
+            }
+            callWatcherStatusLine = "Recording from call prompt"
+            startRecording(source: candidate.recommendedRecordingSource, startReason: "call_prompt_notification")
+        case let .dismiss(fingerprint):
+            guard let candidate = callPromptCandidate(for: fingerprint),
+                  claimCallPromptAction(for: candidate)
+            else {
+                return
+            }
+            callWatcherStatusLine = callWatcherConfiguration.isEnabled ? "Dismissed. Listening for a new call." : "Off"
+            Task { [dependencies, cooldownSeconds = callWatcherConfiguration.cooldownSeconds] in
+                await dependencies.callWatcher.suppressPrompt(for: candidate, cooldownSeconds: cooldownSeconds)
+            }
+        case let .disable(fingerprint):
+            guard let candidate = callPromptCandidate(for: fingerprint) else { return }
+            _ = claimCallPromptAction(for: candidate)
+            disableCallWatcherFromPromptTapped()
+        }
+    }
+
     private func restoreModelPreparationStateFromSettings() async {
         do {
             let settings = try await dependencies.settings.load()
@@ -2244,6 +2889,8 @@ final class AppViewModel: ObservableObject {
             await dependencies.diarization.setDiarizationEngine(restoredDiarizationEngine)
             await dependencies.recorder.setLiveTranscriptionEnabled(restoredLiveEnabled)
             await dependencies.transcription.setVocabularyBoostingConfiguration(restoredVocabularyBoosting)
+            let restoredBatchLanguage = settings.batchTranscriptionLanguage
+            await dependencies.transcription.setBatchTranscriptionLanguage(restoredBatchLanguage)
             await MainActor.run {
                 self.modelRegistryCustomBaseURL = restoredModelRegistry.normalizedBaseURL ?? ""
                 self.selectedRecordingSource = restoredRecordingSource
@@ -2257,6 +2904,7 @@ final class AppViewModel: ObservableObject {
                 self.isLiveTranscriptionEnabled = restoredLiveEnabled
                 self.isDeleteAudioAfterTranscriptionEnabled = settings.isDeleteAudioAfterTranscriptionEnabled
                 self.isTranscriptConfidenceVisible = settings.isTranscriptConfidenceVisible
+                self.batchTranscriptionLanguage = restoredBatchLanguage
                 if let snapshot = settings.modelPreparation {
                     self.applyModelPreparationReadyState(snapshot: snapshot)
                 }
@@ -2269,6 +2917,13 @@ final class AppViewModel: ObservableObject {
                 self.expandedFolderIDs = restoredFolderIDs.isEmpty
                     ? [Self.unfiledFolderSelectionID]
                     : restoredFolderIDs
+
+                self.callWatcherConfiguration = settings.callWatcher
+                self.automaticMarkdownExport = settings.automaticMarkdownExport
+                self.globalDictationConfiguration = settings.globalDictation
+                self.startCallPromptNotificationActions()
+                self.startCallWatcherIfNeeded()
+                self.registerGlobalDictationHotKeyIfNeeded()
             }
         } catch {
             await dependencies.metrics.log(

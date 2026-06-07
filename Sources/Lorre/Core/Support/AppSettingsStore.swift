@@ -64,6 +64,42 @@ actor AppSettingsStore {
     }
 
     @discardableResult
+    func setBatchTranscriptionLanguage(_ language: BatchTranscriptionLanguage) async throws -> AppSettings {
+        var settings = try await load()
+        settings.batchTranscriptionLanguage = language
+        settings.updatedAt = Date()
+        try save(settings)
+        return settings
+    }
+
+    @discardableResult
+    func setCallWatcherConfiguration(_ configuration: CallWatcherConfiguration) async throws -> AppSettings {
+        var settings = try await load()
+        settings.callWatcher = configuration
+        settings.updatedAt = Date()
+        try save(settings)
+        return settings
+    }
+
+    @discardableResult
+    func setGlobalDictationConfiguration(_ configuration: GlobalDictationConfiguration) async throws -> AppSettings {
+        var settings = try await load()
+        settings.globalDictation = configuration
+        settings.updatedAt = Date()
+        try save(settings)
+        return settings
+    }
+
+    @discardableResult
+    func setAutomaticMarkdownExportConfiguration(_ configuration: AutomaticMarkdownExportConfiguration) async throws -> AppSettings {
+        var settings = try await load()
+        settings.automaticMarkdownExport = configuration
+        settings.updatedAt = Date()
+        try save(settings)
+        return settings
+    }
+
+    @discardableResult
     func setDiarizationExpectedSpeakerCountHint(_ hint: DiarizationSpeakerCountHint) async throws -> AppSettings {
         var settings = try await load()
         settings.diarizationExpectedSpeakerCountHint = hint.normalized()

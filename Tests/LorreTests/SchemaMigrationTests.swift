@@ -85,6 +85,18 @@ final class SchemaMigrationTests: XCTestCase {
         XCTAssertFalse(settings.isLiveTranscriptionEnabled)
         XCTAssertFalse(settings.isDeleteAudioAfterTranscriptionEnabled)
         XCTAssertEqual(settings.folders, [])
+        // Field added after the v2 fixture was captured: absence must decode to the
+        // fork default (Automatic), not crash older settings on disk.
+        XCTAssertEqual(settings.batchTranscriptionLanguage, .automatic)
+    }
+
+    func testAppSettingsBatchTranscriptionLanguageRoundTrips() throws {
+        let original = AppSettings(batchTranscriptionLanguage: .english)
+        let encoder = JSONEncoder()
+        encoder.dateEncodingStrategy = .iso8601
+        let data = try encoder.encode(original)
+        let decoded = try makeDecoder().decode(AppSettings.self, from: data)
+        XCTAssertEqual(decoded.batchTranscriptionLanguage, .english)
     }
 
     // MARK: - Helpers

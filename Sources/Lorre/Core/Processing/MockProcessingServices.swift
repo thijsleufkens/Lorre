@@ -26,6 +26,10 @@ struct MockTranscriptionService: TranscriptionService {
         _ = configuration
     }
 
+    func setBatchTranscriptionLanguage(_ language: BatchTranscriptionLanguage) async {
+        _ = language
+    }
+
     func transcribe(url: URL, sessionTitle: String, source: RecordingSource) async throws -> TranscriptionResult {
         _ = url
         _ = source

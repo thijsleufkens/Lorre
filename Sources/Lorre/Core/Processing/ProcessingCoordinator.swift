@@ -21,6 +21,7 @@ actor ProcessingCoordinator {
         diarizationExpectedSpeakers: DiarizationSpeakerCountHint = .auto,
         exportDiarizationDebugArtifact: Bool = false,
         deleteAudioAfterTranscription: Bool = false,
+        languageCode: String? = nil,
         onProgress: @escaping @Sendable (ProcessingUpdate) async -> Void
     ) async throws -> TranscriptDocument {
         guard var session = try await store.loadSession(id: sessionId) else {
@@ -74,7 +75,8 @@ actor ProcessingCoordinator {
                     TranscriptAssembler.assemble(
                         sessionId: sessionId,
                         transcription: transcription,
-                        diarization: nil
+                        diarization: nil,
+                        languageHint: languageCode
                     )
                 )
                 try await store.saveTranscript(draftTranscript)
@@ -120,7 +122,8 @@ actor ProcessingCoordinator {
                 TranscriptAssembler.assemble(
                     sessionId: sessionId,
                     transcription: transcription,
-                    diarization: adjustedDiarization
+                    diarization: adjustedDiarization,
+                    languageHint: languageCode
                 )
             )
 

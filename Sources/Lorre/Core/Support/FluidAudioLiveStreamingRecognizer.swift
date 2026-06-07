@@ -314,7 +314,7 @@ actor FluidAudioLiveStreamingRecognizer {
                     )
                 )
             }
-            try await manager.loadModels(modelDir: modelDir)
+            try await manager.loadModels(from: modelDir)
             await manager.setPartialCallback { [weak self] partial in
                 Task { await self?.handlePartialCallbackText(partial) }
             }
@@ -618,14 +618,14 @@ actor FluidAudioLiveStreamingRecognizer {
         if !update.tentativeSegments.isEmpty {
             candidate = update.tentativeSegments.max { lhs, rhs in
                 if lhs.endFrame == rhs.endFrame {
-                    return lhs.confidence < rhs.confidence
+                    return lhs.activity < rhs.activity
                 }
                 return lhs.endFrame < rhs.endFrame
             }
         } else {
             candidate = update.finalizedSegments.max { lhs, rhs in
                 if lhs.endFrame == rhs.endFrame {
-                    return lhs.confidence < rhs.confidence
+                    return lhs.activity < rhs.activity
                 }
                 return lhs.endFrame < rhs.endFrame
             }
@@ -634,8 +634,13 @@ actor FluidAudioLiveStreamingRecognizer {
         guard let candidate else {
             return nil
         }
-        guard candidate.confidence >= liveSpeakerActivationThreshold else { return nil }
-        return (slot: candidate.speakerIndex, probability: candidate.confidence)
+        let activity = Self.normalizedLiveSpeakerActivity(candidate.activity)
+        guard activity >= liveSpeakerActivationThreshold else { return nil }
+        return (slot: candidate.speakerIndex, probability: activity)
+    }
+
+    static func normalizedLiveSpeakerActivity(_ activity: Float) -> Float {
+        max(0, min(1, activity))
     }
 
     private func matchKnownSpeaker(for embedding: [Float]) -> (speaker: KnownSpeaker, distance: Float)? {
