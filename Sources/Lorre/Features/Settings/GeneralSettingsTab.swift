@@ -22,9 +22,40 @@ struct GeneralSettingsTab: View {
                     .font(.callout)
                     .foregroundStyle(.secondary)
             }
+
+            Section("Call watcher") {
+                Toggle("Prompt to record when a call starts", isOn: callWatcherBinding)
+                Text("Watches for calls in Teams, Zoom, Meet and similar apps, then sends a notification asking if you want to record.")
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+                if viewModel.isCallWatcherEnabled {
+                    Picker("Record with", selection: callWatcherSourceBinding) {
+                        ForEach(RecordingSource.allCases) { source in
+                            Text(source.label).tag(source)
+                        }
+                    }
+                    Text("Status: \(viewModel.callWatcherSummary)")
+                        .font(.callout)
+                        .foregroundStyle(.secondary)
+                }
+            }
         }
         .formStyle(.grouped)
         .navigationTitle("General")
+    }
+
+    private var callWatcherBinding: Binding<Bool> {
+        Binding(
+            get: { viewModel.isCallWatcherEnabled },
+            set: { viewModel.setCallWatcherEnabled($0) }
+        )
+    }
+
+    private var callWatcherSourceBinding: Binding<RecordingSource> {
+        Binding(
+            get: { viewModel.callWatcherConfiguration.defaultRecordingSource },
+            set: { viewModel.setCallWatcherDefaultRecordingSource($0) }
+        )
     }
 
     private var retentionBinding: Binding<Bool> {

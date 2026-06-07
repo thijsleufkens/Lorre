@@ -224,6 +224,8 @@ func makeTestDependencies(
         speakerEnrollment: speakerEnrollment,
         playback: TestPlaybackService(),
         exporter: MarkdownExportService(),
+        callWatcher: DisabledCallWatcherService(),
+        callPromptNotifications: DisabledCallPromptNotificationService(),
         processingCoordinator: coordinator,
         metrics: LocalMetricsLogger(baseURL: root),
         fluidAudioStatus: fluidAudioStatus,

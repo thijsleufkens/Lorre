@@ -73,6 +73,15 @@ actor AppSettingsStore {
     }
 
     @discardableResult
+    func setCallWatcherConfiguration(_ configuration: CallWatcherConfiguration) async throws -> AppSettings {
+        var settings = try await load()
+        settings.callWatcher = configuration
+        settings.updatedAt = Date()
+        try save(settings)
+        return settings
+    }
+
+    @discardableResult
     func setDiarizationExpectedSpeakerCountHint(_ hint: DiarizationSpeakerCountHint) async throws -> AppSettings {
         var settings = try await load()
         settings.diarizationExpectedSpeakerCountHint = hint.normalized()

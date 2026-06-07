@@ -1,5 +1,23 @@
 import Foundation
 
+protocol CallWatcherService: Sendable {
+    func makeDetectionStream(configuration: CallWatcherConfiguration) async -> AsyncStream<CallDetectionEvent>
+    func suppressPrompt(for candidate: CallDetectionCandidate, cooldownSeconds: Int) async
+}
+
+enum CallPromptNotificationAction: Equatable, Sendable {
+    case accept(fingerprint: String)
+    case dismiss(fingerprint: String)
+    case disable(fingerprint: String)
+}
+
+protocol CallPromptNotificationService: Sendable {
+    func requestAuthorizationIfNeeded() async -> Bool
+    func showCallPrompt(for candidate: CallDetectionCandidate) async -> Bool
+    func removeCallPrompt(fingerprint: String) async
+    func makeActionStream() async -> AsyncStream<CallPromptNotificationAction>
+}
+
 protocol SessionStore: Sendable {
     func loadSessions() async throws -> [SessionManifest]
     func loadSession(id: UUID) async throws -> SessionManifest?

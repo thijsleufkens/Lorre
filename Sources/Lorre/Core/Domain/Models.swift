@@ -868,6 +868,7 @@ struct AppSettings: Codable, Equatable, Sendable {
     var isDeleteAudioAfterTranscriptionEnabled: Bool
     var isTranscriptConfidenceVisible: Bool
     var batchTranscriptionLanguage: BatchTranscriptionLanguage
+    var callWatcher: CallWatcherConfiguration
     var vocabularyBoosting: VocabularyBoostingConfiguration
     var folders: [SessionFolder]
     var sidebarExpandedViewFilterIDs: [String]
@@ -887,6 +888,7 @@ struct AppSettings: Codable, Equatable, Sendable {
         isDeleteAudioAfterTranscriptionEnabled: Bool = false,
         isTranscriptConfidenceVisible: Bool = false,
         batchTranscriptionLanguage: BatchTranscriptionLanguage = .dutch,
+        callWatcher: CallWatcherConfiguration = .init(),
         vocabularyBoosting: VocabularyBoostingConfiguration = .init(),
         folders: [SessionFolder] = [],
         sidebarExpandedViewFilterIDs: [String] = [],
@@ -905,6 +907,7 @@ struct AppSettings: Codable, Equatable, Sendable {
         self.isDeleteAudioAfterTranscriptionEnabled = isDeleteAudioAfterTranscriptionEnabled
         self.isTranscriptConfidenceVisible = isTranscriptConfidenceVisible
         self.batchTranscriptionLanguage = batchTranscriptionLanguage
+        self.callWatcher = callWatcher
         self.vocabularyBoosting = vocabularyBoosting
         self.folders = folders
         self.sidebarExpandedViewFilterIDs = sidebarExpandedViewFilterIDs
@@ -925,6 +928,7 @@ struct AppSettings: Codable, Equatable, Sendable {
         case isDeleteAudioAfterTranscriptionEnabled
         case isTranscriptConfidenceVisible
         case batchTranscriptionLanguage
+        case callWatcher
         case vocabularyBoosting
         case folders
         case sidebarExpandedViewFilterIDs
@@ -948,6 +952,7 @@ struct AppSettings: Codable, Equatable, Sendable {
         self.isDeleteAudioAfterTranscriptionEnabled = try container.decodeIfPresent(Bool.self, forKey: .isDeleteAudioAfterTranscriptionEnabled) ?? false
         self.isTranscriptConfidenceVisible = try container.decodeIfPresent(Bool.self, forKey: .isTranscriptConfidenceVisible) ?? false
         self.batchTranscriptionLanguage = try container.decodeIfPresent(BatchTranscriptionLanguage.self, forKey: .batchTranscriptionLanguage) ?? .dutch
+        self.callWatcher = try container.decodeIfPresent(CallWatcherConfiguration.self, forKey: .callWatcher) ?? .init()
         self.vocabularyBoosting = try container.decodeIfPresent(VocabularyBoostingConfiguration.self, forKey: .vocabularyBoosting) ?? .init()
         self.folders = try container.decodeIfPresent([SessionFolder].self, forKey: .folders) ?? []
         self.sidebarExpandedViewFilterIDs = try container.decodeIfPresent([String].self, forKey: .sidebarExpandedViewFilterIDs) ?? []
@@ -969,6 +974,7 @@ struct AppSettings: Codable, Equatable, Sendable {
         try container.encode(isDeleteAudioAfterTranscriptionEnabled, forKey: .isDeleteAudioAfterTranscriptionEnabled)
         try container.encode(isTranscriptConfidenceVisible, forKey: .isTranscriptConfidenceVisible)
         try container.encode(batchTranscriptionLanguage, forKey: .batchTranscriptionLanguage)
+        try container.encode(callWatcher, forKey: .callWatcher)
         try container.encode(vocabularyBoosting, forKey: .vocabularyBoosting)
         try container.encode(folders, forKey: .folders)
         try container.encode(sidebarExpandedViewFilterIDs, forKey: .sidebarExpandedViewFilterIDs)

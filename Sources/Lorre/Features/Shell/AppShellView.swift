@@ -41,6 +41,23 @@ struct AppShellView: View {
                 .help("Open Settings")
             }
         }
+        .alert("Call detected", isPresented: callPromptPresented) {
+            Button("Record") { viewModel.acceptCallPromptTapped() }
+            Button("Not now", role: .cancel) { viewModel.dismissCallPromptTapped() }
+        } message: {
+            Text(viewModel.callPromptDetail)
+        }
+    }
+
+    private var callPromptPresented: Binding<Bool> {
+        Binding(
+            get: { viewModel.callPromptCandidate != nil },
+            set: { isPresented in
+                if !isPresented, viewModel.callPromptCandidate != nil {
+                    viewModel.dismissCallPromptTapped()
+                }
+            }
+        )
     }
 }
 

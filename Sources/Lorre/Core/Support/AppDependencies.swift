@@ -10,6 +10,8 @@ struct AppDependencies {
     let speakerEnrollment: any SpeakerEnrollmentService
     let playback: any AudioPlaybackService
     let exporter: any ExportService
+    let callWatcher: any CallWatcherService
+    let callPromptNotifications: any CallPromptNotificationService
     let processingCoordinator: ProcessingCoordinator
     let metrics: LocalMetricsLogger
     let fluidAudioStatus: String
@@ -64,6 +66,15 @@ struct AppDependencies {
             transcriptionService: transcriptionService,
             diarizationService: diarizationService
         )
+
+        #if canImport(AppKit)
+        let callWatcher: any CallWatcherService = MacCallWatcherService()
+        let callPromptNotifications: any CallPromptNotificationService = MacCallPromptNotificationService()
+        #else
+        let callWatcher: any CallWatcherService = DisabledCallWatcherService()
+        let callPromptNotifications: any CallPromptNotificationService = DisabledCallPromptNotificationService()
+        #endif
+
         return AppDependencies(
             store: store,
             knownSpeakerStore: knownSpeakerStore,
@@ -74,6 +85,8 @@ struct AppDependencies {
             speakerEnrollment: speakerEnrollmentService,
             playback: playback,
             exporter: MarkdownExportService(),
+            callWatcher: callWatcher,
+            callPromptNotifications: callPromptNotifications,
             processingCoordinator: coordinator,
             metrics: LocalMetricsLogger(),
             fluidAudioStatus: fluidAudioStatus,

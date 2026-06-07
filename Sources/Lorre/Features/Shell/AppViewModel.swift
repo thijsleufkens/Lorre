@@ -30,6 +30,9 @@ final class AppViewModel: ObservableObject {
     @Published private(set) var activeTranscript: TranscriptDocument?
     @Published private(set) var isLoading = true
     @Published private(set) var isRecording = false
+    @Published private(set) var callWatcherConfiguration = CallWatcherConfiguration()
+    @Published private(set) var callWatcherStatusLine: String = "Off"
+    @Published private(set) var callPromptCandidate: CallDetectionCandidate?
     @Published private(set) var isStartingRecording = false
     @Published private(set) var isStoppingRecording = false
     @Published private(set) var recordingElapsedSeconds: Double = 0
@@ -77,6 +80,10 @@ final class AppViewModel: ObservableObject {
     private var playbackMonitorTask: Task<Void, Never>?
     private var waveformLoadTask: Task<Void, Never>?
     private var recordingSourceChangeTask: Task<Void, Never>?
+    private var callWatcherTask: Task<Void, Never>?
+    private var callPromptNotificationTask: Task<Void, Never>?
+    private var callPromptCandidatesByFingerprint: [String: CallDetectionCandidate] = [:]
+    private var handledCallPromptActionFingerprints: Set<String> = []
     private var currentRecordingStartedAt: Date?
     private var currentProcessingTasks: [UUID: Task<Void, Never>] = [:]
     private var cachedFilteredSessions: [SessionManifest] = []
@@ -106,6 +113,8 @@ final class AppViewModel: ObservableObject {
         waveformLoadTask?.cancel()
         recordingSourceChangeTask?.cancel()
         sidebarExpansionSaveTask?.cancel()
+        callWatcherTask?.cancel()
+        callPromptNotificationTask?.cancel()
         currentProcessingTasks.values.forEach { $0.cancel() }
     }
 
@@ -2262,6 +2271,260 @@ final class AppViewModel: ObservableObject {
         }
     }
 
+    // MARK: - Call watcher (auto-record prompt)
+
+    var isCallWatcherEnabled: Bool {
+        callWatcherConfiguration.isEnabled
+    }
+
+    var callWatcherSummary: String {
+        callWatcherConfiguration.isEnabled ? callWatcherStatusLine : "Off"
+    }
+
+    var callPromptDetail: String {
+        guard let candidate = callPromptCandidate else { return "" }
+        return "\(candidate.appDisplayName) looks like a call. Record with \(candidate.recommendedRecordingSource.label)?"
+    }
+
+    func setCallWatcherEnabled(_ isEnabled: Bool) {
+        guard callWatcherConfiguration.isEnabled != isEnabled else { return }
+        let previous = callWatcherConfiguration
+        var updated = callWatcherConfiguration
+        updated.isEnabled = isEnabled
+        callWatcherConfiguration = updated
+        if let candidate = callPromptCandidate {
+            removeCallPromptNotification(fingerprint: candidate.fingerprint)
+        }
+        callPromptCandidate = nil
+        startCallWatcherIfNeeded()
+
+        Task { [weak self] in
+            guard let self else { return }
+            do {
+                if isEnabled {
+                    _ = await self.dependencies.callPromptNotifications.requestAuthorizationIfNeeded()
+                }
+                _ = try await self.dependencies.settings.setCallWatcherConfiguration(updated)
+                await self.dependencies.metrics.log(
+                    name: "call_watcher_toggled",
+                    attributes: ["enabled": isEnabled ? "true" : "false"]
+                )
+            } catch {
+                await MainActor.run {
+                    self.callWatcherConfiguration = previous
+                    self.startCallWatcherIfNeeded()
+                    self.presentError(error, defaultTitle: "Could not save call watcher setting")
+                }
+            }
+        }
+    }
+
+    func setCallWatcherDefaultRecordingSource(_ source: RecordingSource) {
+        guard callWatcherConfiguration.defaultRecordingSource != source else { return }
+        let previous = callWatcherConfiguration
+        var updated = callWatcherConfiguration
+        updated.defaultRecordingSource = source
+        callWatcherConfiguration = updated
+        if callWatcherConfiguration.isEnabled {
+            startCallWatcherIfNeeded()
+        }
+
+        Task { [weak self] in
+            guard let self else { return }
+            do {
+                _ = try await self.dependencies.settings.setCallWatcherConfiguration(updated)
+            } catch {
+                await MainActor.run {
+                    self.callWatcherConfiguration = previous
+                    if self.callWatcherConfiguration.isEnabled {
+                        self.startCallWatcherIfNeeded()
+                    }
+                    self.presentError(error, defaultTitle: "Could not save call watcher source")
+                }
+            }
+        }
+    }
+
+    func acceptCallPromptTapped() {
+        guard let candidate = callPromptCandidate, claimCallPromptAction(for: candidate) else { return }
+        callWatcherStatusLine = "Recording from call prompt"
+        startRecording(source: candidate.recommendedRecordingSource, startReason: "call_prompt")
+    }
+
+    func dismissCallPromptTapped() {
+        guard let candidate = callPromptCandidate, claimCallPromptAction(for: candidate) else { return }
+        callWatcherStatusLine = callWatcherConfiguration.isEnabled ? "Dismissed. Listening for a new call." : "Off"
+        Task { [dependencies, cooldownSeconds = callWatcherConfiguration.cooldownSeconds] in
+            await dependencies.callWatcher.suppressPrompt(for: candidate, cooldownSeconds: cooldownSeconds)
+        }
+    }
+
+    func disableCallWatcherFromPromptTapped() {
+        callPromptCandidate = nil
+        setCallWatcherEnabled(false)
+    }
+
+    private func startRecording(source: RecordingSource, startReason: String) {
+        selectedRecordingSource = source
+        Task { [dependencies] in
+            await dependencies.metrics.log(name: "record_start_reason", attributes: ["reason": startReason])
+        }
+        startRecordingTapped()
+    }
+
+    private func startCallWatcherIfNeeded() {
+        callWatcherTask?.cancel()
+        callWatcherTask = nil
+        callPromptCandidate = nil
+        callPromptCandidatesByFingerprint.removeAll()
+        handledCallPromptActionFingerprints.removeAll()
+
+        guard callWatcherConfiguration.isEnabled else {
+            callWatcherStatusLine = "Off"
+            return
+        }
+
+        let configuration = callWatcherConfiguration
+        callWatcherStatusLine = "Listening for calls…"
+        callWatcherTask = Task { [weak self] in
+            guard let self else { return }
+            let stream = await self.dependencies.callWatcher.makeDetectionStream(configuration: configuration)
+            for await event in stream {
+                guard !Task.isCancelled else { return }
+                await MainActor.run {
+                    self.handleCallDetectionEvent(event)
+                }
+            }
+        }
+    }
+
+    private func startCallPromptNotificationActions() {
+        guard callPromptNotificationTask == nil else { return }
+        callPromptNotificationTask = Task { [weak self] in
+            guard let self else { return }
+            let stream = await self.dependencies.callPromptNotifications.makeActionStream()
+            for await action in stream {
+                guard !Task.isCancelled else { return }
+                await MainActor.run {
+                    self.handleCallPromptNotificationAction(action)
+                }
+            }
+        }
+    }
+
+    private func handleCallDetectionEvent(_ event: CallDetectionEvent) {
+        switch event {
+        case let .candidateDetected(candidate):
+            guard callWatcherConfiguration.isEnabled else { return }
+            guard !isStartingRecording, !isRecording, !isStoppingRecording else {
+                callWatcherStatusLine = "Call-like activity detected. Recorder is busy."
+                return
+            }
+            guard callPromptCandidatesByFingerprint[candidate.fingerprint] == nil,
+                  !handledCallPromptActionFingerprints.contains(candidate.fingerprint)
+            else {
+                return
+            }
+
+            callPromptCandidatesByFingerprint[candidate.fingerprint] = candidate
+            callPromptCandidate = candidate
+            callWatcherStatusLine = "Call-like activity detected in \(candidate.appDisplayName)"
+            Task { [weak self, dependencies] in
+                let didShowNotification = await dependencies.callPromptNotifications.showCallPrompt(for: candidate)
+                if !didShowNotification {
+                    await MainActor.run {
+                        guard let self,
+                              self.callPromptCandidate?.fingerprint == candidate.fingerprint,
+                              self.callWatcherConfiguration.isEnabled
+                        else {
+                            return
+                        }
+                        self.callWatcherStatusLine = "Call detected in \(candidate.appDisplayName). Showing the prompt in Lorre."
+                        self.requestUserAttentionForCallPromptFallback()
+                    }
+                }
+                await dependencies.metrics.log(
+                    name: "call_prompt_shown",
+                    attributes: [
+                        "app": candidate.appDisplayName,
+                        "confidence": "\(candidate.confidenceScore)",
+                        "source": candidate.recommendedRecordingSource.rawValue,
+                        "notification": didShowNotification ? "true" : "false"
+                    ]
+                )
+            }
+
+        case let .candidateEnded(fingerprint):
+            removeCallPromptNotification(fingerprint: fingerprint)
+            callPromptCandidatesByFingerprint[fingerprint] = nil
+            handledCallPromptActionFingerprints.remove(fingerprint)
+            if callPromptCandidate?.fingerprint == fingerprint {
+                callPromptCandidate = nil
+            }
+            callWatcherStatusLine = callWatcherConfiguration.isEnabled ? "Listening for calls…" : "Off"
+        }
+    }
+
+    private func callPromptCandidate(for fingerprint: String) -> CallDetectionCandidate? {
+        if callPromptCandidate?.fingerprint == fingerprint {
+            return callPromptCandidate
+        }
+        return callPromptCandidatesByFingerprint[fingerprint]
+    }
+
+    @discardableResult
+    private func claimCallPromptAction(for candidate: CallDetectionCandidate) -> Bool {
+        guard !handledCallPromptActionFingerprints.contains(candidate.fingerprint) else {
+            return false
+        }
+        handledCallPromptActionFingerprints.insert(candidate.fingerprint)
+        callPromptCandidatesByFingerprint[candidate.fingerprint] = nil
+        if callPromptCandidate?.fingerprint == candidate.fingerprint {
+            callPromptCandidate = nil
+        }
+        removeCallPromptNotification(fingerprint: candidate.fingerprint)
+        return true
+    }
+
+    private func removeCallPromptNotification(fingerprint: String) {
+        Task { [dependencies] in
+            await dependencies.callPromptNotifications.removeCallPrompt(fingerprint: fingerprint)
+        }
+    }
+
+    private func requestUserAttentionForCallPromptFallback() {
+        #if canImport(AppKit)
+        NSApplication.shared.requestUserAttention(.informationalRequest)
+        #endif
+    }
+
+    private func handleCallPromptNotificationAction(_ action: CallPromptNotificationAction) {
+        switch action {
+        case let .accept(fingerprint):
+            guard let candidate = callPromptCandidate(for: fingerprint),
+                  claimCallPromptAction(for: candidate)
+            else {
+                return
+            }
+            callWatcherStatusLine = "Recording from call prompt"
+            startRecording(source: candidate.recommendedRecordingSource, startReason: "call_prompt_notification")
+        case let .dismiss(fingerprint):
+            guard let candidate = callPromptCandidate(for: fingerprint),
+                  claimCallPromptAction(for: candidate)
+            else {
+                return
+            }
+            callWatcherStatusLine = callWatcherConfiguration.isEnabled ? "Dismissed. Listening for a new call." : "Off"
+            Task { [dependencies, cooldownSeconds = callWatcherConfiguration.cooldownSeconds] in
+                await dependencies.callWatcher.suppressPrompt(for: candidate, cooldownSeconds: cooldownSeconds)
+            }
+        case let .disable(fingerprint):
+            guard let candidate = callPromptCandidate(for: fingerprint) else { return }
+            _ = claimCallPromptAction(for: candidate)
+            disableCallWatcherFromPromptTapped()
+        }
+    }
+
     private func restoreModelPreparationStateFromSettings() async {
         do {
             let settings = try await dependencies.settings.load()
@@ -2303,6 +2566,10 @@ final class AppViewModel: ObservableObject {
                 self.expandedFolderIDs = restoredFolderIDs.isEmpty
                     ? [Self.unfiledFolderSelectionID]
                     : restoredFolderIDs
+
+                self.callWatcherConfiguration = settings.callWatcher
+                self.startCallPromptNotificationActions()
+                self.startCallWatcherIfNeeded()
             }
         } catch {
             await dependencies.metrics.log(
