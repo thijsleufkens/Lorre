@@ -2589,6 +2589,13 @@ final class AppViewModel: ObservableObject {
                 format: .markdown,
                 destinationURL: destinationURL
             )
+            let jsonURL = destinationURL.deletingPathExtension().appendingPathExtension("json")
+            _ = try await dependencies.exporter.export(
+                session: session,
+                transcript: transcript,
+                format: .json,
+                destinationURL: jsonURL
+            )
             await dependencies.metrics.log(
                 name: "automatic_markdown_export_succeeded",
                 sessionId: sessionID,

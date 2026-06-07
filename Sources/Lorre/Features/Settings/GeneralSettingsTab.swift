@@ -58,7 +58,7 @@ struct GeneralSettingsTab: View {
             }
 
             Section("Automatic export") {
-                Toggle("Save a Markdown copy when a transcript is ready", isOn: autoExportBinding)
+                Toggle("Save the transcript (Markdown + JSON) when it's ready", isOn: autoExportBinding)
                     .disabled(!viewModel.automaticMarkdownExport.hasFolder)
                 HStack {
                     Text("Folder")
@@ -68,7 +68,7 @@ struct GeneralSettingsTab: View {
                     Button("Choose…") { chooseAutoExportFolder() }
                 }
                 TextField("Filename template", text: fileNameTemplateBinding)
-                Text("Tokens: {date}, {time}, {datetime}, {smart_title}, {keywords}, {duration}, {speaker_count}. Preview: \(viewModel.automaticMarkdownExportFileNamePreview)")
+                Text("Tokens: {date}, {time}, {datetime}, {smart_title}, {keywords}, {duration}, {speaker_count}. Preview: \(viewModel.automaticMarkdownExportFileNamePreview) (a matching .json is written alongside).")
                     .font(.callout)
                     .foregroundStyle(.secondary)
             }
