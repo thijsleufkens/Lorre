@@ -43,6 +43,20 @@ struct GeneralSettingsTab: View {
                 }
             }
 
+            Section("Global dictation") {
+                Toggle("Dictate into any app with a shortcut", isOn: globalDictationBinding)
+                Text("Press the shortcut to capture speech, then Lorre transcribes locally and types the text into the focused app. Requires Accessibility permission.")
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+                if viewModel.isGlobalDictationEnabled {
+                    Picker("Shortcut", selection: globalDictationShortcutBinding) {
+                        ForEach(GlobalDictationShortcutChoice.allCases) { choice in
+                            Text(choice.label).tag(choice)
+                        }
+                    }
+                }
+            }
+
             Section("Automatic export") {
                 Toggle("Save a Markdown copy when a transcript is ready", isOn: autoExportBinding)
                     .disabled(!viewModel.automaticMarkdownExport.hasFolder)
@@ -61,6 +75,20 @@ struct GeneralSettingsTab: View {
         }
         .formStyle(.grouped)
         .navigationTitle("General")
+    }
+
+    private var globalDictationBinding: Binding<Bool> {
+        Binding(
+            get: { viewModel.isGlobalDictationEnabled },
+            set: { viewModel.setGlobalDictationEnabled($0) }
+        )
+    }
+
+    private var globalDictationShortcutBinding: Binding<GlobalDictationShortcutChoice> {
+        Binding(
+            get: { viewModel.globalDictationConfiguration.shortcut },
+            set: { viewModel.setGlobalDictationShortcut($0) }
+        )
     }
 
     private var autoExportBinding: Binding<Bool> {

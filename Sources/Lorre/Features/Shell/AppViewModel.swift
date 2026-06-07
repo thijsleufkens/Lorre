@@ -34,6 +34,10 @@ final class AppViewModel: ObservableObject {
     @Published private(set) var callWatcherStatusLine: String = "Off"
     @Published private(set) var callPromptCandidate: CallDetectionCandidate?
     @Published private(set) var automaticMarkdownExport = AutomaticMarkdownExportConfiguration()
+    @Published private(set) var globalDictationConfiguration = GlobalDictationConfiguration()
+    @Published private(set) var globalDictationPhase: GlobalDictationPhase = .idle
+    @Published private(set) var globalDictationStatusLine: String = ""
+    @Published private(set) var globalDictationTranscriptText: String = ""
     @Published private(set) var isStartingRecording = false
     @Published private(set) var isStoppingRecording = false
     @Published private(set) var recordingElapsedSeconds: Double = 0
@@ -85,6 +89,7 @@ final class AppViewModel: ObservableObject {
     private var callPromptNotificationTask: Task<Void, Never>?
     private var callPromptCandidatesByFingerprint: [String: CallDetectionCandidate] = [:]
     private var handledCallPromptActionFingerprints: Set<String> = []
+    private var currentGlobalDictationTarget: GlobalTextInsertionTarget?
     private var currentRecordingStartedAt: Date?
     private var currentProcessingTasks: [UUID: Task<Void, Never>] = [:]
     private var cachedFilteredSessions: [SessionManifest] = []
@@ -2273,6 +2278,243 @@ final class AppViewModel: ObservableObject {
         }
     }
 
+    // MARK: - Global dictation
+
+    var isGlobalDictationEnabled: Bool {
+        globalDictationConfiguration.isEnabled
+    }
+
+    var isGlobalDictationBusy: Bool {
+        globalDictationPhase.isBusy
+    }
+
+    func setGlobalDictationEnabled(_ isEnabled: Bool) {
+        guard globalDictationConfiguration.isEnabled != isEnabled else { return }
+        let previous = globalDictationConfiguration
+        var updated = globalDictationConfiguration
+        updated.isEnabled = isEnabled
+        globalDictationConfiguration = updated
+        registerGlobalDictationHotKeyIfNeeded()
+
+        Task { [weak self] in
+            guard let self else { return }
+            do {
+                _ = try await self.dependencies.settings.setGlobalDictationConfiguration(updated)
+                await self.dependencies.metrics.log(
+                    name: "global_dictation_toggled",
+                    attributes: ["enabled": isEnabled ? "true" : "false"]
+                )
+            } catch {
+                await MainActor.run {
+                    self.globalDictationConfiguration = previous
+                    self.registerGlobalDictationHotKeyIfNeeded()
+                    self.presentError(error, defaultTitle: "Could not save dictation setting")
+                }
+            }
+        }
+    }
+
+    func setGlobalDictationShortcut(_ shortcut: GlobalDictationShortcutChoice) {
+        guard globalDictationConfiguration.shortcut != shortcut else { return }
+        let previous = globalDictationConfiguration
+        var updated = globalDictationConfiguration
+        updated.shortcut = shortcut
+        globalDictationConfiguration = updated
+        registerGlobalDictationHotKeyIfNeeded()
+
+        Task { [weak self] in
+            guard let self else { return }
+            do {
+                _ = try await self.dependencies.settings.setGlobalDictationConfiguration(updated)
+            } catch {
+                await MainActor.run {
+                    self.globalDictationConfiguration = previous
+                    self.registerGlobalDictationHotKeyIfNeeded()
+                    self.presentError(error, defaultTitle: "Could not save dictation shortcut")
+                }
+            }
+        }
+    }
+
+    func startGlobalDictationTapped() {
+        startGlobalDictation()
+    }
+
+    func stopGlobalDictationTapped() {
+        stopGlobalDictationAndInsert()
+    }
+
+    func cancelGlobalDictationTapped() {
+        guard globalDictationPhase == .listening else { return }
+        globalDictationPhase = .idle
+        globalDictationStatusLine = "Dictation cancelled."
+        currentGlobalDictationTarget = nil
+        Task { [weak self] in
+            guard let self else { return }
+            try? await self.dependencies.recorder.cancelRecording()
+        }
+    }
+
+    func dismissGlobalDictationOverlay() {
+        guard !globalDictationPhase.isBusy else { return }
+        globalDictationPhase = .idle
+        globalDictationStatusLine = ""
+        globalDictationTranscriptText = ""
+    }
+
+    private func registerGlobalDictationHotKeyIfNeeded() {
+        dependencies.globalDictationHotKey.unregister()
+        guard globalDictationConfiguration.isEnabled else { return }
+        do {
+            try dependencies.globalDictationHotKey.register(shortcut: globalDictationConfiguration.shortcut) { [weak self] in
+                self?.globalDictationHotKeyPressed()
+            }
+        } catch {
+            presentError(error, defaultTitle: "Could not register dictation shortcut")
+        }
+    }
+
+    private func globalDictationHotKeyPressed() {
+        if globalDictationPhase == .listening {
+            stopGlobalDictationAndInsert()
+        } else {
+            startGlobalDictation()
+        }
+    }
+
+    private func startGlobalDictation() {
+        guard globalDictationConfiguration.isEnabled else {
+            banner = AppBanner(
+                kind: .info,
+                title: "Global dictation is off",
+                message: "Enable Global Dictation in settings before using the shortcut."
+            )
+            return
+        }
+        guard !isStartingRecording, !isRecording, !isStoppingRecording, !isGlobalDictationBusy else {
+            banner = AppBanner(
+                kind: .info,
+                title: "Dictation unavailable",
+                message: "Finish the active recording or dictation before starting another capture."
+            )
+            return
+        }
+
+        let preparation = dependencies.globalTextInsertion.prepareTarget(promptForPermission: true)
+        guard case let .ready(target) = preparation else {
+            globalDictationPhase = .failed
+            globalDictationStatusLine = preparation.userFacingMessage
+            banner = AppBanner(
+                kind: .error,
+                title: "Cannot start global dictation",
+                message: preparation.userFacingMessage
+            )
+            return
+        }
+
+        stopPlaybackAndResetState()
+        banner = nil
+        currentGlobalDictationTarget = target
+        globalDictationTranscriptText = ""
+        globalDictationStatusLine = "Listening for speech"
+        globalDictationPhase = .listening
+
+        Task { [weak self] in
+            guard let self else { return }
+            do {
+                await MainActor.run {
+                    self.applyCurrentRuntimeConfiguration()
+                }
+                await self.dependencies.recorder.setLiveTranscriptionEnabled(false)
+                try await self.dependencies.recorder.startRecording(RecordingRequest(source: .microphone))
+                await self.dependencies.metrics.log(
+                    name: "global_dictation_started",
+                    attributes: ["target_app": target.appName]
+                )
+            } catch {
+                await MainActor.run {
+                    self.globalDictationPhase = .failed
+                    self.globalDictationStatusLine = error.localizedDescription
+                    self.currentGlobalDictationTarget = nil
+                    self.presentError(error, defaultTitle: "Could not start global dictation")
+                }
+            }
+        }
+    }
+
+    private func stopGlobalDictationAndInsert() {
+        guard globalDictationPhase == .listening, let target = currentGlobalDictationTarget else { return }
+        globalDictationPhase = .transcribing
+        globalDictationStatusLine = "Stopping capture…"
+
+        Task { [weak self] in
+            guard let self else { return }
+            let temporaryDirectory = FileManager.default.temporaryDirectory
+                .appendingPathComponent("LorreGlobalDictation-\(UUID().uuidString)", isDirectory: true)
+            defer { try? FileManager.default.removeItem(at: temporaryDirectory) }
+
+            do {
+                let fileLayout = await self.dependencies.recorder.recordingFileLayout(for: .microphone)
+                _ = try await self.dependencies.recorder.stopRecording(in: temporaryDirectory, fileLayout: fileLayout)
+                let audioURL = temporaryDirectory.appendingPathComponent(fileLayout.audioFileName)
+
+                await MainActor.run { self.globalDictationStatusLine = "Preparing local speech model…" }
+                try await self.dependencies.transcription.ensureModelsReady { [weak self] update in
+                    guard let self else { return }
+                    await MainActor.run { self.globalDictationStatusLine = update.label }
+                }
+
+                await MainActor.run { self.globalDictationStatusLine = "Transcribing dictated text…" }
+                let result = try await self.dependencies.transcription.transcribe(
+                    url: audioURL,
+                    sessionTitle: "Global Dictation",
+                    source: .microphone
+                )
+                let text = GlobalDictationTextFormatter.insertionText(from: result)
+                guard !text.isEmpty else {
+                    throw LorreError.processingFailed("No speech was transcribed. Try again closer to the microphone.")
+                }
+
+                await MainActor.run {
+                    self.globalDictationTranscriptText = text
+                    self.globalDictationPhase = .inserting
+                    self.globalDictationStatusLine = "Inserting text into \(target.displayName)…"
+                }
+
+                let insertion = await self.dependencies.globalTextInsertion.insert(text, into: target)
+                await MainActor.run {
+                    switch insertion {
+                    case .inserted:
+                        self.globalDictationPhase = .inserted
+                        self.globalDictationStatusLine = "Inserted \(text.count) characters into \(target.displayName)."
+                        self.banner = AppBanner(
+                            kind: .success,
+                            title: "Dictation inserted",
+                            message: "Text was inserted into \(target.displayName)."
+                        )
+                    case let .failed(_, message):
+                        self.globalDictationPhase = .failed
+                        self.globalDictationStatusLine = message
+                        self.dependencies.globalTextInsertion.copyToClipboard(text)
+                        self.banner = AppBanner(
+                            kind: .error,
+                            title: "Dictation insertion failed",
+                            message: "\(message) The text was copied to the clipboard instead."
+                        )
+                    }
+                    self.currentGlobalDictationTarget = nil
+                }
+            } catch {
+                await MainActor.run {
+                    self.globalDictationPhase = .failed
+                    self.globalDictationStatusLine = error.localizedDescription
+                    self.currentGlobalDictationTarget = nil
+                    self.presentError(error, defaultTitle: "Global dictation failed")
+                }
+            }
+        }
+    }
+
     // MARK: - Automatic Markdown export
 
     var automaticMarkdownExportFileNamePreview: String {
@@ -2510,7 +2752,7 @@ final class AppViewModel: ObservableObject {
         switch event {
         case let .candidateDetected(candidate):
             guard callWatcherConfiguration.isEnabled else { return }
-            guard !isStartingRecording, !isRecording, !isStoppingRecording else {
+            guard !isStartingRecording, !isRecording, !isStoppingRecording, !isGlobalDictationBusy else {
                 callWatcherStatusLine = "Call-like activity detected. Recorder is busy."
                 return
             }
@@ -2663,8 +2905,10 @@ final class AppViewModel: ObservableObject {
 
                 self.callWatcherConfiguration = settings.callWatcher
                 self.automaticMarkdownExport = settings.automaticMarkdownExport
+                self.globalDictationConfiguration = settings.globalDictation
                 self.startCallPromptNotificationActions()
                 self.startCallWatcherIfNeeded()
+                self.registerGlobalDictationHotKeyIfNeeded()
             }
         } catch {
             await dependencies.metrics.log(

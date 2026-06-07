@@ -226,6 +226,8 @@ func makeTestDependencies(
         exporter: MarkdownExportService(),
         callWatcher: DisabledCallWatcherService(),
         callPromptNotifications: DisabledCallPromptNotificationService(),
+        globalDictationHotKey: DisabledGlobalDictationHotKeyService(),
+        globalTextInsertion: DisabledGlobalTextInsertionService(),
         processingCoordinator: coordinator,
         metrics: LocalMetricsLogger(baseURL: root),
         fluidAudioStatus: fluidAudioStatus,

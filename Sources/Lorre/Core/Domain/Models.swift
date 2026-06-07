@@ -945,6 +945,7 @@ struct AppSettings: Codable, Equatable, Sendable {
     var isTranscriptConfidenceVisible: Bool
     var batchTranscriptionLanguage: BatchTranscriptionLanguage
     var callWatcher: CallWatcherConfiguration
+    var globalDictation: GlobalDictationConfiguration
     var automaticMarkdownExport: AutomaticMarkdownExportConfiguration
     var vocabularyBoosting: VocabularyBoostingConfiguration
     var folders: [SessionFolder]
@@ -966,6 +967,7 @@ struct AppSettings: Codable, Equatable, Sendable {
         isTranscriptConfidenceVisible: Bool = false,
         batchTranscriptionLanguage: BatchTranscriptionLanguage = .dutch,
         callWatcher: CallWatcherConfiguration = .init(),
+        globalDictation: GlobalDictationConfiguration = .init(),
         automaticMarkdownExport: AutomaticMarkdownExportConfiguration = .init(),
         vocabularyBoosting: VocabularyBoostingConfiguration = .init(),
         folders: [SessionFolder] = [],
@@ -986,6 +988,7 @@ struct AppSettings: Codable, Equatable, Sendable {
         self.isTranscriptConfidenceVisible = isTranscriptConfidenceVisible
         self.batchTranscriptionLanguage = batchTranscriptionLanguage
         self.callWatcher = callWatcher
+        self.globalDictation = globalDictation
         self.automaticMarkdownExport = automaticMarkdownExport
         self.vocabularyBoosting = vocabularyBoosting
         self.folders = folders
@@ -1008,6 +1011,7 @@ struct AppSettings: Codable, Equatable, Sendable {
         case isTranscriptConfidenceVisible
         case batchTranscriptionLanguage
         case callWatcher
+        case globalDictation
         case automaticMarkdownExport
         case vocabularyBoosting
         case folders
@@ -1033,6 +1037,7 @@ struct AppSettings: Codable, Equatable, Sendable {
         self.isTranscriptConfidenceVisible = try container.decodeIfPresent(Bool.self, forKey: .isTranscriptConfidenceVisible) ?? false
         self.batchTranscriptionLanguage = try container.decodeIfPresent(BatchTranscriptionLanguage.self, forKey: .batchTranscriptionLanguage) ?? .dutch
         self.callWatcher = try container.decodeIfPresent(CallWatcherConfiguration.self, forKey: .callWatcher) ?? .init()
+        self.globalDictation = try container.decodeIfPresent(GlobalDictationConfiguration.self, forKey: .globalDictation) ?? .init()
         self.automaticMarkdownExport = try container.decodeIfPresent(AutomaticMarkdownExportConfiguration.self, forKey: .automaticMarkdownExport) ?? .init()
         self.vocabularyBoosting = try container.decodeIfPresent(VocabularyBoostingConfiguration.self, forKey: .vocabularyBoosting) ?? .init()
         self.folders = try container.decodeIfPresent([SessionFolder].self, forKey: .folders) ?? []
@@ -1056,6 +1061,7 @@ struct AppSettings: Codable, Equatable, Sendable {
         try container.encode(isTranscriptConfidenceVisible, forKey: .isTranscriptConfidenceVisible)
         try container.encode(batchTranscriptionLanguage, forKey: .batchTranscriptionLanguage)
         try container.encode(callWatcher, forKey: .callWatcher)
+        try container.encode(globalDictation, forKey: .globalDictation)
         try container.encode(automaticMarkdownExport, forKey: .automaticMarkdownExport)
         try container.encode(vocabularyBoosting, forKey: .vocabularyBoosting)
         try container.encode(folders, forKey: .folders)

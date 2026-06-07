@@ -18,6 +18,26 @@ protocol CallPromptNotificationService: Sendable {
     func makeActionStream() async -> AsyncStream<CallPromptNotificationAction>
 }
 
+protocol GlobalDictationHotKeyService: AnyObject, Sendable {
+    func register(
+        shortcut: GlobalDictationShortcutChoice,
+        handler: @escaping @MainActor @Sendable () -> Void
+    ) throws
+
+    func unregister()
+}
+
+protocol GlobalTextInsertionService: Sendable {
+    @MainActor
+    func prepareTarget(promptForPermission: Bool) -> GlobalTextInsertionPreparation
+
+    @MainActor
+    func insert(_ text: String, into target: GlobalTextInsertionTarget) async -> GlobalTextInsertionResult
+
+    @MainActor
+    func copyToClipboard(_ text: String)
+}
+
 protocol SessionStore: Sendable {
     func loadSessions() async throws -> [SessionManifest]
     func loadSession(id: UUID) async throws -> SessionManifest?

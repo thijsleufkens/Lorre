@@ -82,6 +82,15 @@ actor AppSettingsStore {
     }
 
     @discardableResult
+    func setGlobalDictationConfiguration(_ configuration: GlobalDictationConfiguration) async throws -> AppSettings {
+        var settings = try await load()
+        settings.globalDictation = configuration
+        settings.updatedAt = Date()
+        try save(settings)
+        return settings
+    }
+
+    @discardableResult
     func setAutomaticMarkdownExportConfiguration(_ configuration: AutomaticMarkdownExportConfiguration) async throws -> AppSettings {
         var settings = try await load()
         settings.automaticMarkdownExport = configuration

@@ -12,6 +12,8 @@ struct AppDependencies {
     let exporter: any ExportService
     let callWatcher: any CallWatcherService
     let callPromptNotifications: any CallPromptNotificationService
+    let globalDictationHotKey: any GlobalDictationHotKeyService
+    let globalTextInsertion: any GlobalTextInsertionService
     let processingCoordinator: ProcessingCoordinator
     let metrics: LocalMetricsLogger
     let fluidAudioStatus: String
@@ -70,9 +72,13 @@ struct AppDependencies {
         #if canImport(AppKit)
         let callWatcher: any CallWatcherService = MacCallWatcherService()
         let callPromptNotifications: any CallPromptNotificationService = MacCallPromptNotificationService()
+        let globalDictationHotKey: any GlobalDictationHotKeyService = CarbonGlobalDictationHotKeyService()
+        let globalTextInsertion: any GlobalTextInsertionService = MacGlobalTextInsertionService()
         #else
         let callWatcher: any CallWatcherService = DisabledCallWatcherService()
         let callPromptNotifications: any CallPromptNotificationService = DisabledCallPromptNotificationService()
+        let globalDictationHotKey: any GlobalDictationHotKeyService = DisabledGlobalDictationHotKeyService()
+        let globalTextInsertion: any GlobalTextInsertionService = DisabledGlobalTextInsertionService()
         #endif
 
         return AppDependencies(
@@ -87,6 +93,8 @@ struct AppDependencies {
             exporter: MarkdownExportService(),
             callWatcher: callWatcher,
             callPromptNotifications: callPromptNotifications,
+            globalDictationHotKey: globalDictationHotKey,
+            globalTextInsertion: globalTextInsertion,
             processingCoordinator: coordinator,
             metrics: LocalMetricsLogger(),
             fluidAudioStatus: fluidAudioStatus,
