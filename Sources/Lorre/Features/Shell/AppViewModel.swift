@@ -2580,16 +2580,20 @@ final class AppViewModel: ObservableObject {
             template: configuration.fileNameTemplate
         )
         let destinationURL = folderURL.appendingPathComponent(fileName)
+        let jsonURL = destinationURL.deletingPathExtension().appendingPathExtension("json")
 
+        // Tracks which file we're writing so a failure names the right one.
+        var failingFileName = fileName
         do {
             try FileManager.default.createDirectory(at: folderURL, withIntermediateDirectories: true)
+            failingFileName = destinationURL.lastPathComponent
             _ = try await dependencies.exporter.export(
                 session: session,
                 transcript: transcript,
                 format: .markdown,
                 destinationURL: destinationURL
             )
-            let jsonURL = destinationURL.deletingPathExtension().appendingPathExtension("json")
+            failingFileName = jsonURL.lastPathComponent
             _ = try await dependencies.exporter.export(
                 session: session,
                 transcript: transcript,
@@ -2602,16 +2606,17 @@ final class AppViewModel: ObservableObject {
                 attributes: ["file": fileName]
             )
         } catch {
+            let failedFile = failingFileName
             await dependencies.metrics.log(
                 name: "automatic_markdown_export_failed",
                 sessionId: sessionID,
-                attributes: ["error": error.localizedDescription]
+                attributes: ["error": error.localizedDescription, "file": failedFile]
             )
             await MainActor.run {
                 self.banner = AppBanner(
                     kind: .error,
                     title: "Automatic export failed",
-                    message: "Could not write \(fileName) to \(configuration.folderDisplayName). \(error.localizedDescription)"
+                    message: "Could not write \(failedFile) to \(configuration.folderDisplayName). \(error.localizedDescription)"
                 )
             }
         }

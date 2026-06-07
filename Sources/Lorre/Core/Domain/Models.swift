@@ -502,7 +502,7 @@ struct TranscriptDocument: Codable, Equatable, Sendable {
     init(
         schemaVersion: Int = 1,
         sessionId: UUID,
-        languageHint: String? = "en",
+        languageHint: String? = nil,
         sourceEngine: String,
         segments: [TranscriptSegment],
         speakers: [SpeakerProfile],

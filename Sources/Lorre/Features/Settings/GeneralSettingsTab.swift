@@ -68,7 +68,7 @@ struct GeneralSettingsTab: View {
                     Button("Choose…") { chooseAutoExportFolder() }
                 }
                 TextField("Filename template", text: fileNameTemplateBinding)
-                Text("Tokens: {date}, {time}, {datetime}, {smart_title}, {keywords}, {duration}, {speaker_count}. Preview: \(viewModel.automaticMarkdownExportFileNamePreview) (a matching .json is written alongside).")
+                Text("Tokens: {date}, {time}, {datetime}, {smart_title}, {keywords}, {duration}, {speaker_count}. Preview: \(viewModel.automaticMarkdownExportFileNamePreview). A matching .json is written alongside.")
                     .font(.callout)
                     .foregroundStyle(.secondary)
             }

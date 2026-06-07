@@ -7,7 +7,15 @@ final class BatchTranscriptionLanguageTests: XCTestCase {
     }
 
     func testConcreteLanguageCodeMatchesRawValue() {
+        for language in BatchTranscriptionLanguage.allCases where language != .automatic {
+            XCTAssertEqual(language.languageCode, language.rawValue)
+        }
         XCTAssertEqual(BatchTranscriptionLanguage.dutch.languageCode, "nl")
-        XCTAssertEqual(BatchTranscriptionLanguage.english.languageCode, "en")
+        XCTAssertEqual(BatchTranscriptionLanguage.german.languageCode, "de")
+    }
+
+    func testTranscriptDocumentDefaultLanguageHintIsNil() {
+        let doc = TranscriptDocument(sessionId: UUID(), sourceEngine: "test", segments: [], speakers: [])
+        XCTAssertNil(doc.languageHint)
     }
 }
