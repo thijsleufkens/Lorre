@@ -1736,6 +1736,7 @@ final class AppViewModel: ObservableObject {
                     diarizationExpectedSpeakers: self.diarizationExpectedSpeakerCountHint,
                     exportDiarizationDebugArtifact: self.isDiarizationDebugExportEnabled,
                     deleteAudioAfterTranscription: deleteAudioAfterTranscription,
+                    languageCode: self.batchTranscriptionLanguage.languageCode,
                     onProgress: { [weak self] update in
                         guard let self else { return }
                         await MainActor.run {
