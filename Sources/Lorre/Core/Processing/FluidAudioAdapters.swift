@@ -64,8 +64,9 @@ actor FluidAudioTranscriptionService: TranscriptionService {
             self.manager = manager
         }
 
-        func transcribe(_ url: URL, source: AudioSource) async throws -> ASRResult {
-            try await manager.transcribe(url, source: source)
+        func transcribe(_ url: URL, language: Language?) async throws -> ASRResult {
+            var decoderState = TdtDecoderState.make(decoderLayers: await manager.decoderLayerCount)
+            return try await manager.transcribe(url, decoderState: &decoderState, language: language)
         }
     }
 
@@ -96,6 +97,14 @@ actor FluidAudioTranscriptionService: TranscriptionService {
     private var vadManagerBox: VadManagerBox?
     private var initialized = false
     private var vocabularyBoostingConfiguration = VocabularyBoostingConfiguration()
+    /// Explicit batch ASR language hint passed to Parakeet's multilingual v3 model.
+    /// Defaults to Dutch for this fork (most meetings are in NL); `nil` would let the
+    /// model auto-detect. The hint biases token filtering toward the chosen language.
+    private var batchLanguage: Language? = .dutch
+
+    func setBatchLanguage(_ language: Language?) async {
+        batchLanguage = language
+    }
 
     func ensureModelsReady(
         onProgress: (@Sendable (ProcessingUpdate) async -> Void)? = nil
@@ -187,7 +196,8 @@ actor FluidAudioTranscriptionService: TranscriptionService {
         }
 
         _ = sessionTitle
-        let result = try await managerBox.transcribe(url, source: fluidAudioSource(for: source))
+        _ = source
+        let result = try await managerBox.transcribe(url, language: batchLanguage)
         let speechWindows = await loadSpeechWindowsIfAvailable(from: url)
         let utterances = buildUtterances(from: result, speechWindows: speechWindows)
 
@@ -203,15 +213,6 @@ actor FluidAudioTranscriptionService: TranscriptionService {
                 TranscriptionUtterance(startMs: 0, endMs: 1000, text: fallbackText, confidence: nil)
             ]
         )
-    }
-
-    private func fluidAudioSource(for source: RecordingSource) -> AudioSource {
-        switch source {
-        case .microphone:
-            return .microphone
-        case .systemAudio, .microphoneAndSystemAudio:
-            return .system
-        }
     }
 
     private func loadSpeechWindowsIfAvailable(from url: URL) async -> [SpeechWindow]? {
@@ -599,7 +600,7 @@ actor FluidAudioDiarizationService: SpeakerDiarizationService {
     private var offlinePreparedSpeakerHint: DiarizationSpeakerCountHint = .auto
     private var sortformerModels: SortformerModels?
     private var sortformerDiarizer: SortformerDiarizer?
-    private var lsEendDescriptor: LSEENDModelDescriptor?
+    private var lsEendModel: LSEENDModel?
     private var lsEendDiarizer: LSEENDDiarizer?
     private var knownSpeakers: [KnownSpeaker] = []
     private let representativeAudioLimitSeconds: Double = 10.0
@@ -840,8 +841,8 @@ actor FluidAudioDiarizationService: SpeakerDiarizationService {
             )
         }
 
-        if lsEendDescriptor == nil {
-            lsEendDescriptor = try await LSEENDModelDescriptor.loadFromHuggingFace(
+        if lsEendModel == nil {
+            lsEendModel = try await LSEENDModel.loadFromHuggingFace(
                 variant: .dihard3,
                 progressHandler: { progress in
                     guard let onProgress else { return }
@@ -858,12 +859,12 @@ actor FluidAudioDiarizationService: SpeakerDiarizationService {
             )
         }
 
-        guard let lsEendDescriptor else {
+        guard let lsEendModel else {
             throw LorreError.processingFailed("LS-EEND diarization models are unavailable.")
         }
 
         let diarizer = LSEENDDiarizer()
-        try diarizer.initialize(descriptor: lsEendDescriptor)
+        try diarizer.initialize(model: lsEendModel)
         lsEendDiarizer = diarizer
 
         if let onProgress {
