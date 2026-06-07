@@ -55,6 +55,7 @@ final class AppViewModel: ObservableObject {
     @Published private(set) var diarizationEngine: DiarizationEngine = .offlineVbx
     @Published private(set) var diarizationExpectedSpeakerCountHint: DiarizationSpeakerCountHint = .auto
     @Published private(set) var isDiarizationDebugExportEnabled: Bool = false
+    @Published private(set) var batchTranscriptionLanguage: BatchTranscriptionLanguage = .dutch
     @Published private(set) var isVocabularyBoostingEnabled: Bool = false
     @Published var customVocabularySimpleFormatTerms: String = ""
     @Published private(set) var selectedRecordingSource: RecordingSource = .microphone
@@ -1307,6 +1308,36 @@ final class AppViewModel: ObservableObject {
         }
     }
 
+    func setBatchTranscriptionLanguage(_ language: BatchTranscriptionLanguage) {
+        guard batchTranscriptionLanguage != language else { return }
+        let previous = batchTranscriptionLanguage
+        batchTranscriptionLanguage = language
+
+        Task { [weak self] in
+            guard let self else { return }
+            do {
+                await self.dependencies.transcription.setBatchTranscriptionLanguage(language)
+                _ = try await self.dependencies.settings.setBatchTranscriptionLanguage(language)
+                await self.dependencies.metrics.log(
+                    name: "batch_transcription_language_changed",
+                    attributes: ["language": language.rawValue]
+                )
+                await MainActor.run {
+                    self.banner = AppBanner(
+                        kind: .info,
+                        title: "Transcription language set to \(language.displayName)",
+                        message: "New recordings will be transcribed with a \(language.displayName) language hint."
+                    )
+                }
+            } catch {
+                await MainActor.run {
+                    self.batchTranscriptionLanguage = previous
+                    self.presentError(error, defaultTitle: "Could not save transcription language")
+                }
+            }
+        }
+    }
+
     func setDiarizationDebugExportEnabled(_ isEnabled: Bool) {
         guard isDiarizationDebugExportEnabled != isEnabled else { return }
         let previous = isDiarizationDebugExportEnabled
@@ -2244,6 +2275,8 @@ final class AppViewModel: ObservableObject {
             await dependencies.diarization.setDiarizationEngine(restoredDiarizationEngine)
             await dependencies.recorder.setLiveTranscriptionEnabled(restoredLiveEnabled)
             await dependencies.transcription.setVocabularyBoostingConfiguration(restoredVocabularyBoosting)
+            let restoredBatchLanguage = settings.batchTranscriptionLanguage
+            await dependencies.transcription.setBatchTranscriptionLanguage(restoredBatchLanguage)
             await MainActor.run {
                 self.modelRegistryCustomBaseURL = restoredModelRegistry.normalizedBaseURL ?? ""
                 self.selectedRecordingSource = restoredRecordingSource
@@ -2257,6 +2290,7 @@ final class AppViewModel: ObservableObject {
                 self.isLiveTranscriptionEnabled = restoredLiveEnabled
                 self.isDeleteAudioAfterTranscriptionEnabled = settings.isDeleteAudioAfterTranscriptionEnabled
                 self.isTranscriptConfidenceVisible = settings.isTranscriptConfidenceVisible
+                self.batchTranscriptionLanguage = restoredBatchLanguage
                 if let snapshot = settings.modelPreparation {
                     self.applyModelPreparationReadyState(snapshot: snapshot)
                 }

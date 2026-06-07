@@ -33,6 +33,7 @@ protocol TranscriptionService: Sendable {
         onProgress: (@Sendable (ProcessingUpdate) async -> Void)?
     ) async throws
     func setVocabularyBoostingConfiguration(_ configuration: VocabularyBoostingConfiguration) async
+    func setBatchTranscriptionLanguage(_ language: BatchTranscriptionLanguage) async
     func transcribe(url: URL, sessionTitle: String, source: RecordingSource) async throws -> TranscriptionResult
 }
 

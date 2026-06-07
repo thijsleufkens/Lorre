@@ -5,6 +5,17 @@ struct SpeechModelsSettingsTab: View {
 
     var body: some View {
         Form {
+            Section("Transcription language") {
+                Picker("Language", selection: batchLanguageBinding) {
+                    ForEach(BatchTranscriptionLanguage.allCases) { language in
+                        Text(language.displayName).tag(language)
+                    }
+                }
+                Text("Hints Parakeet's multilingual model toward this language for better recall. Set to the language most of your meetings are in.")
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+            }
+
             Section("Speaker recognition") {
                 Toggle("Label speakers in transcript", isOn: diarizationBinding)
                 Text("Identifies different speakers and labels each line with who is talking.")
@@ -81,6 +92,13 @@ struct SpeechModelsSettingsTab: View {
     }
 
     // MARK: - Bindings
+
+    private var batchLanguageBinding: Binding<BatchTranscriptionLanguage> {
+        Binding(
+            get: { viewModel.batchTranscriptionLanguage },
+            set: { viewModel.setBatchTranscriptionLanguage($0) }
+        )
+    }
 
     private var diarizationBinding: Binding<Bool> {
         Binding(

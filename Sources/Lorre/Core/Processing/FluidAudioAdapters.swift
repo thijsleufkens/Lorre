@@ -98,12 +98,17 @@ actor FluidAudioTranscriptionService: TranscriptionService {
     private var initialized = false
     private var vocabularyBoostingConfiguration = VocabularyBoostingConfiguration()
     /// Explicit batch ASR language hint passed to Parakeet's multilingual v3 model.
-    /// Defaults to Dutch for this fork (most meetings are in NL); `nil` would let the
-    /// model auto-detect. The hint biases token filtering toward the chosen language.
-    private var batchLanguage: Language? = .dutch
+    /// Defaults to Dutch for this fork (most meetings are in NL). The hint biases
+    /// token filtering toward the chosen language for better recall.
+    private var batchTranscriptionLanguage: BatchTranscriptionLanguage = .dutch
 
-    func setBatchLanguage(_ language: Language?) async {
-        batchLanguage = language
+    func setBatchTranscriptionLanguage(_ language: BatchTranscriptionLanguage) async {
+        batchTranscriptionLanguage = language
+    }
+
+    /// Maps our pure-domain language enum onto FluidAudio's `Language`.
+    private func fluidAudioLanguage(for language: BatchTranscriptionLanguage) -> Language? {
+        Language(rawValue: language.rawValue)
     }
 
     func ensureModelsReady(
@@ -197,7 +202,7 @@ actor FluidAudioTranscriptionService: TranscriptionService {
 
         _ = sessionTitle
         _ = source
-        let result = try await managerBox.transcribe(url, language: batchLanguage)
+        let result = try await managerBox.transcribe(url, language: fluidAudioLanguage(for: batchTranscriptionLanguage))
         let speechWindows = await loadSpeechWindowsIfAvailable(from: url)
         let utterances = buildUtterances(from: result, speechWindows: speechWindows)
 

@@ -825,6 +825,35 @@ struct SessionFolder: Identifiable, Codable, Equatable, Sendable {
     }
 }
 
+/// User-selectable batch ASR language for Parakeet's multilingual v3 model.
+/// Stays pure domain; the FluidAudio `Language` mapping lives in the adapter
+/// layer. Defaults to Dutch for this fork (most meetings are in NL).
+enum BatchTranscriptionLanguage: String, Codable, CaseIterable, Identifiable, Equatable, Sendable {
+    case dutch = "nl"
+    case english = "en"
+    case german = "de"
+    case french = "fr"
+    case spanish = "es"
+    case italian = "it"
+    case portuguese = "pt"
+    case polish = "pl"
+
+    var id: String { rawValue }
+
+    var displayName: String {
+        switch self {
+        case .dutch: return "Dutch"
+        case .english: return "English"
+        case .german: return "German"
+        case .french: return "French"
+        case .spanish: return "Spanish"
+        case .italian: return "Italian"
+        case .portuguese: return "Portuguese"
+        case .polish: return "Polish"
+        }
+    }
+}
+
 struct AppSettings: Codable, Equatable, Sendable {
     var schemaVersion: Int
     var updatedAt: Date
@@ -838,6 +867,7 @@ struct AppSettings: Codable, Equatable, Sendable {
     var isLiveTranscriptionEnabled: Bool
     var isDeleteAudioAfterTranscriptionEnabled: Bool
     var isTranscriptConfidenceVisible: Bool
+    var batchTranscriptionLanguage: BatchTranscriptionLanguage
     var vocabularyBoosting: VocabularyBoostingConfiguration
     var folders: [SessionFolder]
     var sidebarExpandedViewFilterIDs: [String]
@@ -856,6 +886,7 @@ struct AppSettings: Codable, Equatable, Sendable {
         isLiveTranscriptionEnabled: Bool = false,
         isDeleteAudioAfterTranscriptionEnabled: Bool = false,
         isTranscriptConfidenceVisible: Bool = false,
+        batchTranscriptionLanguage: BatchTranscriptionLanguage = .dutch,
         vocabularyBoosting: VocabularyBoostingConfiguration = .init(),
         folders: [SessionFolder] = [],
         sidebarExpandedViewFilterIDs: [String] = [],
@@ -873,6 +904,7 @@ struct AppSettings: Codable, Equatable, Sendable {
         self.isLiveTranscriptionEnabled = isLiveTranscriptionEnabled
         self.isDeleteAudioAfterTranscriptionEnabled = isDeleteAudioAfterTranscriptionEnabled
         self.isTranscriptConfidenceVisible = isTranscriptConfidenceVisible
+        self.batchTranscriptionLanguage = batchTranscriptionLanguage
         self.vocabularyBoosting = vocabularyBoosting
         self.folders = folders
         self.sidebarExpandedViewFilterIDs = sidebarExpandedViewFilterIDs
@@ -892,6 +924,7 @@ struct AppSettings: Codable, Equatable, Sendable {
         case isLiveTranscriptionEnabled
         case isDeleteAudioAfterTranscriptionEnabled
         case isTranscriptConfidenceVisible
+        case batchTranscriptionLanguage
         case vocabularyBoosting
         case folders
         case sidebarExpandedViewFilterIDs
@@ -914,6 +947,7 @@ struct AppSettings: Codable, Equatable, Sendable {
         self.isLiveTranscriptionEnabled = try container.decodeIfPresent(Bool.self, forKey: .isLiveTranscriptionEnabled) ?? false
         self.isDeleteAudioAfterTranscriptionEnabled = try container.decodeIfPresent(Bool.self, forKey: .isDeleteAudioAfterTranscriptionEnabled) ?? false
         self.isTranscriptConfidenceVisible = try container.decodeIfPresent(Bool.self, forKey: .isTranscriptConfidenceVisible) ?? false
+        self.batchTranscriptionLanguage = try container.decodeIfPresent(BatchTranscriptionLanguage.self, forKey: .batchTranscriptionLanguage) ?? .dutch
         self.vocabularyBoosting = try container.decodeIfPresent(VocabularyBoostingConfiguration.self, forKey: .vocabularyBoosting) ?? .init()
         self.folders = try container.decodeIfPresent([SessionFolder].self, forKey: .folders) ?? []
         self.sidebarExpandedViewFilterIDs = try container.decodeIfPresent([String].self, forKey: .sidebarExpandedViewFilterIDs) ?? []
@@ -934,6 +968,7 @@ struct AppSettings: Codable, Equatable, Sendable {
         try container.encode(isLiveTranscriptionEnabled, forKey: .isLiveTranscriptionEnabled)
         try container.encode(isDeleteAudioAfterTranscriptionEnabled, forKey: .isDeleteAudioAfterTranscriptionEnabled)
         try container.encode(isTranscriptConfidenceVisible, forKey: .isTranscriptConfidenceVisible)
+        try container.encode(batchTranscriptionLanguage, forKey: .batchTranscriptionLanguage)
         try container.encode(vocabularyBoosting, forKey: .vocabularyBoosting)
         try container.encode(folders, forKey: .folders)
         try container.encode(sidebarExpandedViewFilterIDs, forKey: .sidebarExpandedViewFilterIDs)
