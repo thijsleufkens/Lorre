@@ -63,7 +63,7 @@ final class AppViewModel: ObservableObject {
     @Published private(set) var diarizationEngine: DiarizationEngine = .offlineVbx
     @Published private(set) var diarizationExpectedSpeakerCountHint: DiarizationSpeakerCountHint = .auto
     @Published private(set) var isDiarizationDebugExportEnabled: Bool = false
-    @Published private(set) var batchTranscriptionLanguage: BatchTranscriptionLanguage = .dutch
+    @Published private(set) var batchTranscriptionLanguage: BatchTranscriptionLanguage = .automatic
     @Published private(set) var isVocabularyBoostingEnabled: Bool = false
     @Published var customVocabularySimpleFormatTerms: String = ""
     @Published private(set) var selectedRecordingSource: RecordingSource = .microphone
@@ -1340,8 +1340,10 @@ final class AppViewModel: ObservableObject {
                 await MainActor.run {
                     self.banner = AppBanner(
                         kind: .info,
-                        title: "Transcription language set to \(language.displayName)",
-                        message: "New recordings will be transcribed with a \(language.displayName) language hint."
+                        title: "Transcription language: \(language.displayName)",
+                        message: language == .automatic
+                            ? "New recordings will auto-detect the spoken language."
+                            : "New recordings will be transcribed with a \(language.displayName) language hint."
                     )
                 }
             } catch {

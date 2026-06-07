@@ -97,18 +97,24 @@ actor FluidAudioTranscriptionService: TranscriptionService {
     private var vadManagerBox: VadManagerBox?
     private var initialized = false
     private var vocabularyBoostingConfiguration = VocabularyBoostingConfiguration()
-    /// Explicit batch ASR language hint passed to Parakeet's multilingual v3 model.
-    /// Defaults to Dutch for this fork (most meetings are in NL). The hint biases
-    /// token filtering toward the chosen language for better recall.
-    private var batchTranscriptionLanguage: BatchTranscriptionLanguage = .dutch
+    /// Optional batch ASR language hint passed to Parakeet's multilingual v3 model.
+    /// `.automatic` passes no hint (the model detects the language); a concrete
+    /// language biases token filtering toward it for better recall.
+    private var batchTranscriptionLanguage: BatchTranscriptionLanguage = .automatic
 
     func setBatchTranscriptionLanguage(_ language: BatchTranscriptionLanguage) async {
         batchTranscriptionLanguage = language
     }
 
     /// Maps our pure-domain language enum onto FluidAudio's `Language`.
+    /// `.automatic` → `nil` so the multilingual model auto-detects.
     private func fluidAudioLanguage(for language: BatchTranscriptionLanguage) -> Language? {
-        Language(rawValue: language.rawValue)
+        switch language {
+        case .automatic:
+            return nil
+        default:
+            return Language(rawValue: language.rawValue)
+        }
     }
 
     func ensureModelsReady(

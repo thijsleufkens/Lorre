@@ -86,8 +86,8 @@ final class SchemaMigrationTests: XCTestCase {
         XCTAssertFalse(settings.isDeleteAudioAfterTranscriptionEnabled)
         XCTAssertEqual(settings.folders, [])
         // Field added after the v2 fixture was captured: absence must decode to the
-        // fork default (Dutch), not crash older settings on disk.
-        XCTAssertEqual(settings.batchTranscriptionLanguage, .dutch)
+        // fork default (Automatic), not crash older settings on disk.
+        XCTAssertEqual(settings.batchTranscriptionLanguage, .automatic)
     }
 
     func testAppSettingsBatchTranscriptionLanguageRoundTrips() throws {

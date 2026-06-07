@@ -905,6 +905,8 @@ struct AutomaticMarkdownExportConfiguration: Codable, Equatable, Sendable {
 /// Stays pure domain; the FluidAudio `Language` mapping lives in the adapter
 /// layer. Defaults to Dutch for this fork (most meetings are in NL).
 enum BatchTranscriptionLanguage: String, Codable, CaseIterable, Identifiable, Equatable, Sendable {
+    /// No explicit hint — the multilingual v3 model detects the language itself.
+    case automatic = "auto"
     case dutch = "nl"
     case english = "en"
     case german = "de"
@@ -918,6 +920,7 @@ enum BatchTranscriptionLanguage: String, Codable, CaseIterable, Identifiable, Eq
 
     var displayName: String {
         switch self {
+        case .automatic: return "Automatic"
         case .dutch: return "Dutch"
         case .english: return "English"
         case .german: return "German"
@@ -926,6 +929,14 @@ enum BatchTranscriptionLanguage: String, Codable, CaseIterable, Identifiable, Eq
         case .italian: return "Italian"
         case .portuguese: return "Portuguese"
         case .polish: return "Polish"
+        }
+    }
+
+    /// Short label for compact UI (toolbar menu).
+    var shortLabel: String {
+        switch self {
+        case .automatic: return "Auto"
+        default: return rawValue.uppercased()
         }
     }
 }
@@ -965,7 +976,7 @@ struct AppSettings: Codable, Equatable, Sendable {
         isLiveTranscriptionEnabled: Bool = false,
         isDeleteAudioAfterTranscriptionEnabled: Bool = false,
         isTranscriptConfidenceVisible: Bool = false,
-        batchTranscriptionLanguage: BatchTranscriptionLanguage = .dutch,
+        batchTranscriptionLanguage: BatchTranscriptionLanguage = .automatic,
         callWatcher: CallWatcherConfiguration = .init(),
         globalDictation: GlobalDictationConfiguration = .init(),
         automaticMarkdownExport: AutomaticMarkdownExportConfiguration = .init(),
@@ -1035,7 +1046,7 @@ struct AppSettings: Codable, Equatable, Sendable {
         self.isLiveTranscriptionEnabled = try container.decodeIfPresent(Bool.self, forKey: .isLiveTranscriptionEnabled) ?? false
         self.isDeleteAudioAfterTranscriptionEnabled = try container.decodeIfPresent(Bool.self, forKey: .isDeleteAudioAfterTranscriptionEnabled) ?? false
         self.isTranscriptConfidenceVisible = try container.decodeIfPresent(Bool.self, forKey: .isTranscriptConfidenceVisible) ?? false
-        self.batchTranscriptionLanguage = try container.decodeIfPresent(BatchTranscriptionLanguage.self, forKey: .batchTranscriptionLanguage) ?? .dutch
+        self.batchTranscriptionLanguage = try container.decodeIfPresent(BatchTranscriptionLanguage.self, forKey: .batchTranscriptionLanguage) ?? .automatic
         self.callWatcher = try container.decodeIfPresent(CallWatcherConfiguration.self, forKey: .callWatcher) ?? .init()
         self.globalDictation = try container.decodeIfPresent(GlobalDictationConfiguration.self, forKey: .globalDictation) ?? .init()
         self.automaticMarkdownExport = try container.decodeIfPresent(AutomaticMarkdownExportConfiguration.self, forKey: .automaticMarkdownExport) ?? .init()

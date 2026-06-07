@@ -30,7 +30,10 @@ struct AppShellView: View {
         }
         .toolbar {
             ToolbarItem(placement: .principal) {
-                SourceModeSegmentedControl(viewModel: viewModel)
+                HStack(spacing: DS.Space.x2) {
+                    SourceModeSegmentedControl(viewModel: viewModel)
+                    TranscriptionLanguageMenuControl(viewModel: viewModel)
+                }
             }
             ToolbarItem(placement: .primaryAction) {
                 Button {
