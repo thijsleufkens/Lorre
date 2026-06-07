@@ -410,8 +410,29 @@ Our fork and upstream diverged at commit `f557dc5`. Our branch went deep on
 the CoreAudio Process Tap rewrite, the Studio Sage design, and the 4-tab
 Settings scene. Upstream went deep on dictation, call detection, and ASR
 model options. The items below are the upstream features worth pulling back
-into our fork. None are implemented yet - this theme is the shopping list,
-with integration notes specific to where our two codebases differ.
+into our fork, with integration notes specific to where our two codebases
+differ.
+
+**Status (branch `claude/fluidaudio-0.15-dutch-asr`, code complete, awaiting
+GUI verification):**
+- ✅ 12.0 Dutch default — done (batch language hint defaults to `.dutch`).
+- ✅ 12.1 FluidAudio 0.15 + language selection — done (v3 multilingual with
+  a real language hint; v2/Nemotron/Cohere modes not added — Cohere is an
+  external dependency that conflicts with local-only privacy).
+- ✅ 12.2 Call Watcher — done (detection engine + platform watcher +
+  notification prompt + auto-record, opt-in).
+- ✅ 12.3 Export templates — done (automatic Markdown export to a chosen
+  folder with token filenames).
+- ✅ 12.4 Global Dictation — done (hotkey → local transcribe → insert;
+  status via banners instead of a dedicated overlay view).
+- ✅ 12.5 Model settings in our Settings scene — language picker added to
+  `SpeechModelsSettingsTab`; call/dictation/export controls in
+  `GeneralSettingsTab` (not upstream's sidebar placement).
+
+**Still needs runtime verification (cannot be tested headless):** FluidAudio
+0.15 against our Process Tap audio, Dutch transcription quality, notification
+permission for Call Watcher, and Accessibility permission + packaging
+entitlements for Global Dictation text insertion.
 
 **Shared seam to watch:** upstream made huge edits to `AppViewModel.swift`
 (+1818 lines) and `Models.swift` (+456). Our versions of those files also
