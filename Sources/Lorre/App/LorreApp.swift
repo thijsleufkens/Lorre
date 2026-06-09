@@ -1,6 +1,5 @@
 import SwiftUI
 
-@main
 struct LorreApp: App {
     @StateObject private var viewModel = AppViewModel(dependencies: .live())
 
