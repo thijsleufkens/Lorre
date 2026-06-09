@@ -2571,52 +2571,32 @@ final class AppViewModel: ObservableObject {
 
     private func performAutomaticMarkdownExportIfNeeded(sessionID: UUID, transcript: TranscriptDocument) async {
         let configuration = automaticMarkdownExport
-        guard configuration.isEnabled, let folderURL = configuration.folderURL else { return }
+        guard configuration.isEnabled, configuration.folderURL != nil else { return }
         guard let session = try? await dependencies.store.loadSession(id: sessionID) else { return }
 
-        let fileName = AutomaticExportFileNameBuilder.fileName(
-            session: session,
-            transcript: transcript,
-            template: configuration.fileNameTemplate
-        )
-        let destinationURL = folderURL.appendingPathComponent(fileName)
-        let jsonURL = destinationURL.deletingPathExtension().appendingPathExtension("json")
-
-        // Tracks which file we're writing so a failure names the right one.
-        var failingFileName = fileName
         do {
-            try FileManager.default.createDirectory(at: folderURL, withIntermediateDirectories: true)
-            failingFileName = destinationURL.lastPathComponent
-            _ = try await dependencies.exporter.export(
+            let result = try await AutomaticExporter.writeEnvelope(
                 session: session,
                 transcript: transcript,
-                format: .markdown,
-                destinationURL: destinationURL
-            )
-            failingFileName = jsonURL.lastPathComponent
-            _ = try await dependencies.exporter.export(
-                session: session,
-                transcript: transcript,
-                format: .json,
-                destinationURL: jsonURL
+                configuration: configuration,
+                exporter: dependencies.exporter
             )
             await dependencies.metrics.log(
                 name: "automatic_markdown_export_succeeded",
                 sessionId: sessionID,
-                attributes: ["file": fileName]
+                attributes: ["file": result.markdown.lastPathComponent]
             )
         } catch {
-            let failedFile = failingFileName
             await dependencies.metrics.log(
                 name: "automatic_markdown_export_failed",
                 sessionId: sessionID,
-                attributes: ["error": error.localizedDescription, "file": failedFile]
+                attributes: ["error": error.localizedDescription]
             )
             await MainActor.run {
                 self.banner = AppBanner(
                     kind: .error,
                     title: "Automatic export failed",
-                    message: "Could not write \(failedFile) to \(configuration.folderDisplayName). \(error.localizedDescription)"
+                    message: "Could not write to \(configuration.folderDisplayName). \(error.localizedDescription)"
                 )
             }
         }
