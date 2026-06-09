@@ -10,15 +10,17 @@ Single executable target, Swift Package Manager. macOS 15+. No iOS/iPadOS target
 
 ## Toolchain quirk — read first
 
-`Package.swift` declares `// swift-tools-version: 6.3`. The Xcode that ships locally on this machine has Swift 6.2.4 (from Xcode 26.x). Plain `swift build` / `swift test` will fail with a tools-version mismatch.
+`Package.swift` declares `// swift-tools-version: 6.3`. No Swift 6.3 toolchain is installed on this machine — only Swift 6.1.2 (CommandLineTools) and 6.2.4 (Xcode 26.x). Plain `swift build` / `swift test` will fail with a tools-version mismatch.
 
-Two workarounds, pick one per command:
+**The only working workaround:** temporarily lower line 1 of `Package.swift` to `// swift-tools-version: 6.2`, run the command, **revert before committing**. The package features in use (`resources: [.copy("Fixtures")]`, etc.) are 6.2-compatible. Never commit a tools-version change. E.g.:
 
-1. Route through Xcode's toolchain explicitly:
-   ```bash
-   DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer xcrun swift test
-   ```
-2. Temporarily lower line 1 of `Package.swift` to `// swift-tools-version: 6.2`, run the command, **revert before committing**. The package features in use (`resources: [.copy("Fixtures")]`, etc.) are 6.2-compatible. Never commit a tools-version change.
+```bash
+cp Package.swift /tmp/pkg.bak && sed -i '' '1s/6.3/6.2/' Package.swift
+./scripts/swift_test.sh            # or: DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer xcrun swift build
+cp /tmp/pkg.bak Package.swift       # revert; verify `head -1 Package.swift` shows 6.3 and `git status` is clean
+```
+
+(The old "route through Xcode's toolchain with `DEVELOPER_DIR` + `xcrun`" trick no longer suffices on its own: Xcode's 6.2.4 still can't open a 6.3 package. You must lower the tools-version regardless.)
 
 The `scripts/package_macos_app.sh` script must also be run with `DEVELOPER_DIR` set and `PATH` including Xcode's toolchain:
 
@@ -39,12 +41,14 @@ PATH=/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolch
 | Package `.app` | `./scripts/package_macos_app.sh release` → `dist/Lorre.app` |
 | CI parity | `./scripts/ci_check.sh` |
 | Install built app | `rm -rf /Applications/Lorre.app && cp -R dist/Lorre.app /Applications/` |
+| Transcribe headless | `dist/Lorre.app/Contents/MacOS/Lorre transcribe <file> [--register]` |
 
 All `swift` invocations need the toolchain workaround above. `scripts/swift_test.sh` is a thin wrapper.
 
 ## Repository layout
 
-- `Sources/Lorre/App/` — `LorreApp.swift`, the `@main` SwiftUI scene root. Owns the `AppViewModel` `@StateObject` and exposes both a `WindowGroup` and a `Settings` scene.
+- `Sources/Lorre/App/` — `LorreEntry.swift` is the `@main` entrypoint: it routes via `CLIRouting` to either the headless CLI or the SwiftUI app. `LorreApp.swift` is the SwiftUI scene root (no longer `@main`); it owns the `AppViewModel` `@StateObject` and exposes both a `WindowGroup` and a `Settings` scene.
+- `Sources/Lorre/CLI/` — the dual-mode CLI (swift-argument-parser): `CLIRouting` (argv → CLI vs GUI), `LorreCLI` root, `TranscribeCommand` (the `transcribe` subcommand), `TranscribeServiceFactory` (headless FluidAudio wiring), `TranscribeOutputPlan` (pure output-target resolution). The CLI reuses the GUI-free core (`ProcessingCoordinator`, `FileSessionStore`, `MarkdownExportService`, `AutomaticExporter`).
 - `Sources/Lorre/Core/Domain/` — value types and protocols: `Models.swift` holds `SessionManifest`, `TranscriptDocument`, `AppSettings`, `SpeakerProfile`, etc. All `Codable + Equatable + Sendable`, all schema-versioned with optional-field fallback decoding.
 - `Sources/Lorre/Core/Persistence/` — `FileSessionStore`, `KnownSpeakerStore`, `AtomicFileWriter`. Sessions live one folder per UUID with `session.json`, `transcript.json`, and audio stems alongside.
 - `Sources/Lorre/Core/Processing/` — orchestration of recording → diarization → ASR → speaker labeling. `ProcessingCoordinator` is the hub; FluidAudio adapters live next to it.

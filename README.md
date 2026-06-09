@@ -56,6 +56,21 @@ To build the app bundle in `dist/`:
 ./scripts/package_macos_app.sh
 ```
 
+## Command line
+
+The app binary doubles as a headless CLI. Inside the bundle:
+
+```bash
+/Applications/Lorre.app/Contents/MacOS/Lorre transcribe <file> [options]
+```
+
+- Accepts audio or video (`mp4`/`mov`/`m4a`/`wav`/`mp3` …); video audio tracks are extracted automatically.
+- `--out <path>` / `-o` writes to a file (default: stdout). `--format md|json|both` (`both` requires `--out`, treated as a path stem so it writes `<stem>.md` and `<stem>.json`).
+- `--register` persists the file as a real Lorre session **and** writes the Markdown + JSON auto-export envelope to the configured folder (or `--export-dir <path>`), so the downstream ingest pipeline picks it up.
+- `--language <code>`, `--no-diarization`, `--speakers <n>`, `--quiet` mirror the in-app settings.
+
+Running with no subcommand launches the normal GUI app.
+
 ## Privacy and local data
 
 Lorre stores session data in `~/Library/Application Support/Lorre/`.
