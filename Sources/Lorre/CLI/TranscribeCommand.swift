@@ -30,23 +30,25 @@ struct TranscribeCommand: AsyncParsableCommand {
             diarizationService: factory.diarization
         )
 
-        let ext = sanitizedExtension(inputURL.pathExtension)
         let draft = NewSessionDraft(
             title: inputURL.deletingPathExtension().lastPathComponent,
             folderId: nil,
             status: .processing,
             durationSeconds: nil,
             recordingSource: .microphone,
-            audioFileName: "audio.\(ext)",
+            audioFileName: "audio.m4a",
             microphoneStemFileName: nil,
             systemAudioStemFileName: nil,
             recordedAt: Date()
         )
-        let session = try await store.createSession(draft)
+        var session = try await store.createSession(draft)
         let dir = await store.sessionDirectoryURL(for: session.id)
-        let dest = dir.appendingPathComponent(session.audioFileName)
-        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
-        try FileManager.default.copyItem(at: inputURL, to: dest)
+        let audioFileName = try await MediaAudioImporter.prepareAudio(from: inputURL, intoDirectory: dir)
+        if audioFileName != session.audioFileName {
+            session.audioFileName = audioFileName
+            session.updatedAt = Date()
+            try await store.updateSession(session)
+        }
 
         await factory.diarization.setDiarizationEngine(settings.diarizationEngine)
 
@@ -65,11 +67,5 @@ struct TranscribeCommand: AsyncParsableCommand {
         let reloaded = (try? await store.loadSession(id: session.id)) ?? session
         let markdown = MarkdownExportService().render(session: reloaded, transcript: transcript)
         print(markdown)
-    }
-
-    private func sanitizedExtension(_ raw: String) -> String {
-        let lower = raw.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-        let sanitized = String(lower.unicodeScalars.filter { CharacterSet.alphanumerics.contains($0) })
-        return sanitized.isEmpty ? "m4a" : sanitized
     }
 }
