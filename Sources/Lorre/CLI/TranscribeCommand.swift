@@ -44,6 +44,17 @@ struct TranscribeCommand: AsyncParsableCommand {
         let factory = TranscribeServiceFactory()
         let settings = try await factory.settings.load()
 
+        let registerConfiguration: AutomaticMarkdownExportConfiguration?
+        if register {
+            let configuration = registerExportConfiguration(settings: settings)
+            guard configuration.folderURL != nil else {
+                throw ValidationError("--register needs an export folder. Set one in Lorre settings or pass --export-dir <path>.")
+            }
+            registerConfiguration = configuration
+        } else {
+            registerConfiguration = nil
+        }
+
         let store: FileSessionStore
         var tempBase: URL?
         if register {
@@ -75,7 +86,13 @@ struct TranscribeCommand: AsyncParsableCommand {
         )
         var session = try await store.createSession(draft)
         let dir = await store.sessionDirectoryURL(for: session.id)
-        let audioFileName = try await MediaAudioImporter.prepareAudio(from: inputURL, intoDirectory: dir)
+        let audioFileName: String
+        do {
+            audioFileName = try await MediaAudioImporter.prepareAudio(from: inputURL, intoDirectory: dir)
+        } catch {
+            if register { try? await store.deleteSession(id: session.id) }
+            throw error
+        }
         if audioFileName != session.audioFileName {
             session.audioFileName = audioFileName
             session.updatedAt = Date()
@@ -105,13 +122,9 @@ struct TranscribeCommand: AsyncParsableCommand {
 
         try emit(plan: outputPlan, session: reloaded, transcript: transcript, renderer: renderer)
 
-        if register {
-            let configuration = registerExportConfiguration(settings: settings)
-            guard configuration.folderURL != nil else {
-                throw ValidationError("--register needs an export folder. Set one in Lorre settings or pass --export-dir <path>.")
-            }
+        if let registerConfiguration {
             let result = try await AutomaticExporter.writeEnvelope(
-                session: reloaded, transcript: transcript, configuration: configuration, exporter: renderer
+                session: reloaded, transcript: transcript, configuration: registerConfiguration, exporter: renderer
             )
             if !quiet {
                 FileHandle.standardError.write(Data("Registered session \(reloaded.id) → \(result.json.lastPathComponent)\n".utf8))

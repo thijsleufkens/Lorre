@@ -15,4 +15,9 @@ final class CLIRoutingTests: XCTestCase {
         XCTAssertFalse(CLIRouting.isCLIInvocation(["/path/Lorre", "-psn_0_123456"]))
         XCTAssertFalse(CLIRouting.isCLIInvocation(["/path/Lorre", "-NSDocumentRevisionsDebugMode", "YES"]))
     }
+
+    func testHelpFlagRoutesCLI() {
+        XCTAssertTrue(CLIRouting.isCLIInvocation(["/path/Lorre", "--help"]))
+        XCTAssertTrue(CLIRouting.isCLIInvocation(["/path/Lorre", "-h"]))
+    }
 }
