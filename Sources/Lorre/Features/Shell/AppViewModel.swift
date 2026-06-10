@@ -1242,6 +1242,7 @@ final class AppViewModel: ObservableObject {
 
     func setSpeakerDiarizationEnabled(_ isEnabled: Bool) {
         guard isSpeakerDiarizationEnabled != isEnabled else { return }
+        let previous = isSpeakerDiarizationEnabled
         isSpeakerDiarizationEnabled = isEnabled
 
         Task { [weak self] in
@@ -1263,7 +1264,7 @@ final class AppViewModel: ObservableObject {
                 }
             } catch {
                 await MainActor.run {
-                    self.isSpeakerDiarizationEnabled.toggle()
+                    self.isSpeakerDiarizationEnabled = previous
                     self.presentError(error, defaultTitle: "Could not save processing option")
                 }
             }
