@@ -844,6 +844,16 @@ actor AVFoundationRecorderService: RecorderService {
         if source == .microphoneAndSystemAudio {
             do {
                 try inputNode.setVoiceProcessingEnabled(true)
+                // Voice processing ducks all non-VP audio (browsers, music
+                // players) system-wide by default, which mutes exactly the
+                // audio this mode is trying to record. Keep ducking at the
+                // minimum so Chrome/Spotify stay audible; AEC still removes
+                // the speaker signal from the mic stem.
+                inputNode.voiceProcessingOtherAudioDuckingConfiguration =
+                    AVAudioVoiceProcessingOtherAudioDuckingConfiguration(
+                        enableAdvancedDucking: false,
+                        duckingLevel: .min
+                    )
             } catch {
                 // Voice processing may not be available on every audio device
                 // (e.g. some virtual aggregate inputs). Fall back to raw mic.
