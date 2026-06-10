@@ -74,6 +74,51 @@ final class SchemaMigrationTests: XCTestCase {
         XCTAssertEqual(document.speakers.map(\.id), ["S1", "UNK"])
     }
 
+    func testTranscriptDocumentDecodesMinimalFixtureWithDefaults() throws {
+        let document = try decodeFixture(TranscriptDocument.self, named: "transcript-document-minimal")
+
+        XCTAssertEqual(document.schemaVersion, 1)
+        XCTAssertEqual(document.sessionId, UUID(uuidString: "44444444-4444-4444-4444-444444444444"))
+        XCTAssertNil(document.languageHint)
+        XCTAssertEqual(document.segments.count, 1)
+        XCTAssertEqual(document.segments.first?.text, "Tolerant decode")
+        XCTAssertEqual(document.segments.first?.isEdited, false)
+        XCTAssertNil(document.segments.first?.speakerId)
+        XCTAssertNotNil(document.segments.first?.id)
+    }
+
+    func testTranscriptDocumentEncodeEmitsCurrentSchemaVersion() throws {
+        let original = TranscriptDocument(
+            schemaVersion: 0,
+            sessionId: UUID(),
+            sourceEngine: "TestEngine",
+            segments: [],
+            speakers: []
+        )
+
+        let encoder = JSONEncoder()
+        encoder.dateEncodingStrategy = .iso8601
+        let data = try encoder.encode(original)
+        let json = try XCTUnwrap(try JSONSerialization.jsonObject(with: data) as? [String: Any])
+        XCTAssertEqual(json["schemaVersion"] as? Int, TranscriptDocument.currentSchemaVersion)
+    }
+
+    func testAppSettingsEncodeEmitsCurrentSchemaVersion() throws {
+        // A settings.json written before versioning decodes as schemaVersion 1;
+        // re-encoding it after a mutation must stamp the *current* version, not
+        // echo the stale one.
+        let original = AppSettings(schemaVersion: 1)
+
+        let encoder = JSONEncoder()
+        encoder.dateEncodingStrategy = .iso8601
+        let data = try encoder.encode(original)
+        let json = try XCTUnwrap(try JSONSerialization.jsonObject(with: data) as? [String: Any])
+        XCTAssertEqual(json["schemaVersion"] as? Int, AppSettings.currentSchemaVersion)
+
+        let decoded = try makeDecoder().decode(AppSettings.self, from: data)
+        XCTAssertEqual(decoded.schemaVersion, AppSettings.currentSchemaVersion)
+    }
+
     func testAppSettingsDecodesV2Fixture() throws {
         let settings = try decodeFixture(AppSettings.self, named: "app-settings-v2")
 
