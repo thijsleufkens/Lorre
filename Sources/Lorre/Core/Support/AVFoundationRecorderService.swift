@@ -511,6 +511,7 @@ actor AVFoundationRecorderService: RecorderService {
 
         do {
             let micStart: MicrophoneCaptureStartResult?
+            let microphoneCaptureStartedAt: Date?
             if request.source.includesMicrophone {
                 micStart = try startMicrophoneCapture(
                     in: tempDir,
@@ -519,8 +520,10 @@ actor AVFoundationRecorderService: RecorderService {
                     previewMixer: previewMixer,
                     source: request.source
                 )
+                microphoneCaptureStartedAt = Date()
             } else {
                 micStart = nil
+                microphoneCaptureStartedAt = nil
             }
 
             var systemAudioTempURLForCapture: URL? = nil
@@ -532,6 +535,7 @@ actor AVFoundationRecorderService: RecorderService {
                 _ = try await processTap.start(
                     outputURL: systemTempURL,
                     outputWarmerRequired: !request.source.includesMicrophone,
+                    timelineStart: microphoneCaptureStartedAt,
                     onPCMBuffer: { buffer in
                         if source == .microphoneAndSystemAudio {
                             previewMixer?.enqueue(buffer, source: .systemAudio)
