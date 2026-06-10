@@ -487,9 +487,36 @@ struct TranscriptSegment: Identifiable, Codable, Equatable, Sendable {
         self.isEdited = isEdited
         self.lastEditedAt = lastEditedAt
     }
+
+    private enum CodingKeys: String, CodingKey {
+        case id
+        case startMs
+        case endMs
+        case text
+        case speakerId
+        case sourceSpeakerId
+        case confidence
+        case isEdited
+        case lastEditedAt
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        self.id = try container.decodeIfPresent(UUID.self, forKey: .id) ?? UUID()
+        self.startMs = try container.decode(Int.self, forKey: .startMs)
+        self.endMs = try container.decode(Int.self, forKey: .endMs)
+        self.text = try container.decode(String.self, forKey: .text)
+        self.speakerId = try container.decodeIfPresent(String.self, forKey: .speakerId)
+        self.sourceSpeakerId = try container.decodeIfPresent(String.self, forKey: .sourceSpeakerId)
+        self.confidence = try container.decodeIfPresent(Double.self, forKey: .confidence)
+        self.isEdited = try container.decodeIfPresent(Bool.self, forKey: .isEdited) ?? false
+        self.lastEditedAt = try container.decodeIfPresent(Date.self, forKey: .lastEditedAt)
+    }
 }
 
 struct TranscriptDocument: Codable, Equatable, Sendable {
+    static let currentSchemaVersion = 1
+
     var schemaVersion: Int
     var sessionId: UUID
     var languageHint: String?
@@ -524,6 +551,41 @@ struct TranscriptDocument: Codable, Equatable, Sendable {
             return speakers.first(where: { $0.id == "UNK" }) ?? .defaultProfile(id: "UNK")
         }
         return speakers.first(where: { $0.id == id }) ?? .defaultProfile(id: id)
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case schemaVersion
+        case sessionId
+        case languageHint
+        case sourceEngine
+        case segments
+        case speakers
+        case createdAt
+        case updatedAt
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        self.schemaVersion = try container.decodeIfPresent(Int.self, forKey: .schemaVersion) ?? 1
+        self.sessionId = try container.decode(UUID.self, forKey: .sessionId)
+        self.languageHint = try container.decodeIfPresent(String.self, forKey: .languageHint)
+        self.sourceEngine = try container.decodeIfPresent(String.self, forKey: .sourceEngine) ?? "unknown"
+        self.segments = try container.decodeIfPresent([TranscriptSegment].self, forKey: .segments) ?? []
+        self.speakers = try container.decodeIfPresent([SpeakerProfile].self, forKey: .speakers) ?? []
+        self.createdAt = try container.decodeIfPresent(Date.self, forKey: .createdAt) ?? Date()
+        self.updatedAt = try container.decodeIfPresent(Date.self, forKey: .updatedAt) ?? Date()
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(Self.currentSchemaVersion, forKey: .schemaVersion)
+        try container.encode(sessionId, forKey: .sessionId)
+        try container.encodeIfPresent(languageHint, forKey: .languageHint)
+        try container.encode(sourceEngine, forKey: .sourceEngine)
+        try container.encode(segments, forKey: .segments)
+        try container.encode(speakers, forKey: .speakers)
+        try container.encode(createdAt, forKey: .createdAt)
+        try container.encode(updatedAt, forKey: .updatedAt)
     }
 }
 
@@ -948,6 +1010,8 @@ enum BatchTranscriptionLanguage: String, Codable, CaseIterable, Identifiable, Eq
 }
 
 struct AppSettings: Codable, Equatable, Sendable {
+    static let currentSchemaVersion = 2
+
     var schemaVersion: Int
     var updatedAt: Date
     var modelPreparation: ModelPreparationSnapshot?
@@ -970,7 +1034,7 @@ struct AppSettings: Codable, Equatable, Sendable {
     var sidebarExpandedFolderIDs: [String]
 
     init(
-        schemaVersion: Int = 2,
+        schemaVersion: Int = AppSettings.currentSchemaVersion,
         updatedAt: Date = Date(),
         modelPreparation: ModelPreparationSnapshot? = nil,
         modelRegistryConfiguration: ModelRegistryConfiguration = .init(),
@@ -1064,7 +1128,7 @@ struct AppSettings: Codable, Equatable, Sendable {
 
     func encode(to encoder: Encoder) throws {
         var container = encoder.container(keyedBy: CodingKeys.self)
-        try container.encode(schemaVersion, forKey: .schemaVersion)
+        try container.encode(Self.currentSchemaVersion, forKey: .schemaVersion)
         try container.encode(updatedAt, forKey: .updatedAt)
         try container.encodeIfPresent(modelPreparation, forKey: .modelPreparation)
         try container.encode(modelRegistryConfiguration, forKey: .modelRegistryConfiguration)

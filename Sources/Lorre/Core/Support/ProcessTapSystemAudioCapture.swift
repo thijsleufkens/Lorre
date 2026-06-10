@@ -59,15 +59,20 @@ final class ProcessTapSystemAudioCapture: @unchecked Sendable {
     ///     `AVAudioEngine` in parallel; that engine keeps the audio
     ///     subsystem warm and a second engine can cause monitoring feedback
     ///     (acoustic echo through speakers).
+    /// - Parameter timelineStart: t=0 of the recording for gap padding in the
+    ///   written stem. Pass the mic capture start in mic+system mode so both
+    ///   stems share the same timeline; defaults to the tap's own start.
     func start(
         outputURL: URL,
         outputWarmerRequired: Bool,
+        timelineStart: Date? = nil,
         onPCMBuffer: @escaping @Sendable (AVAudioPCMBuffer) -> Void,
         onMeterLevel: @escaping @Sendable (Double) -> Void
     ) async throws -> StartResult {
         return try startSynchronously(
             outputURL: outputURL,
             outputWarmerRequired: outputWarmerRequired,
+            timelineStart: timelineStart,
             onPCMBuffer: onPCMBuffer,
             onMeterLevel: onMeterLevel
         )
@@ -141,6 +146,7 @@ final class ProcessTapSystemAudioCapture: @unchecked Sendable {
     private func startSynchronously(
         outputURL: URL,
         outputWarmerRequired: Bool,
+        timelineStart: Date?,
         onPCMBuffer: @escaping @Sendable (AVAudioPCMBuffer) -> Void,
         onMeterLevel: @escaping @Sendable (Double) -> Void
     ) throws -> StartResult {
@@ -260,11 +266,29 @@ final class ProcessTapSystemAudioCapture: @unchecked Sendable {
             ) { [weak writer] _, inputData, _, _, _ in
                 guard let writer else { return }
 
-                guard let rawBuffer = AVAudioPCMBuffer(
+                // Normally the aggregate has exactly one input stream (the
+                // tap) and the whole ABL wraps directly. When macOS voice
+                // processing is active elsewhere in this process (mic+system
+                // mode), the anchored output device grows an extra input
+                // stream (the AEC reference) and the ABL carries TWO
+                // interleaved streams — the whole-ABL wrap then fails. The
+                // tap's stream is the last one (sub-device streams precede
+                // sub-tap streams), so fall back to wrapping just that.
+                var rawBufferCandidate = AVAudioPCMBuffer(
                     pcmFormat: tapFormat,
                     bufferListNoCopy: inputData,
                     deallocator: nil
-                ) else {
+                )
+                if rawBufferCandidate == nil {
+                    let ablPointer = UnsafeMutableAudioBufferListPointer(UnsafeMutablePointer(mutating: inputData))
+                    if ablPointer.count > 1, let lastStream = ablPointer.last {
+                        var singleStreamList = AudioBufferList(mNumberBuffers: 1, mBuffers: lastStream)
+                        rawBufferCandidate = withUnsafeMutablePointer(to: &singleStreamList) { pointer in
+                            AVAudioPCMBuffer(pcmFormat: tapFormat, bufferListNoCopy: pointer, deallocator: nil)
+                        }
+                    }
+                }
+                guard let rawBuffer = rawBufferCandidate else {
                     return
                 }
 
@@ -307,6 +331,7 @@ final class ProcessTapSystemAudioCapture: @unchecked Sendable {
             }
 
             let startedAt = Date()
+            writer.setTimelineStart(timelineStart ?? startedAt)
             logger.info("ProcessTapSystemAudioCapture started — writing to \(outputURL.lastPathComponent)")
 
             // ── Step 10: Commit to stored state ───────────────────────────────
@@ -621,21 +646,70 @@ private final class AudioOutputWarmer: @unchecked Sendable {
 @available(macOS 15.0, *)
 final class ProcessTapAudioWriter: @unchecked Sendable {
     private let file: AVAudioFile
+    private let format: AVAudioFormat
     private let lock = NSLock()
     private var writeFailureMessage: String?
+    private var timelineStart: Date?
+    private var framesWritten: Int64 = 0
+
+    /// The tap delivers buffers only while a listed process is actually
+    /// producing audio. Gaps larger than this are filled with silence so the
+    /// stem stays aligned to the recording's wall-clock timeline; smaller
+    /// deviations are normal callback jitter and are left alone.
+    private let gapThresholdSeconds = 0.35
 
     init(outputURL: URL, format: AVAudioFormat) throws {
         self.file = try AVAudioFile(forWriting: outputURL, settings: format.settings)
+        self.format = format
+    }
+
+    /// Anchors the stem's timeline. Use the moment the recording started
+    /// (the mic capture start in mic+system mode), so all stems share t=0.
+    func setTimelineStart(_ date: Date) {
+        lock.withLock { timelineStart = date }
     }
 
     func write(_ buffer: AVAudioPCMBuffer) {
+        write(buffer, at: Date())
+    }
+
+    func write(_ buffer: AVAudioPCMBuffer, at callbackDate: Date) {
         lock.withLock {
             guard writeFailureMessage == nil else { return }
             do {
+                if let timelineStart {
+                    // The buffer delivered at `callbackDate` covers the time
+                    // span just before it; everything missing in between was
+                    // a delivery gap (no process producing audio).
+                    let elapsed = callbackDate.timeIntervalSince(timelineStart)
+                    let expectedBefore = Int64((elapsed * format.sampleRate).rounded()) - Int64(buffer.frameLength)
+                    let gapFrames = expectedBefore - framesWritten
+                    if Double(gapFrames) / format.sampleRate > gapThresholdSeconds {
+                        try writeSilence(frames: gapFrames)
+                    }
+                }
                 try file.write(from: buffer)
+                framesWritten += Int64(buffer.frameLength)
             } catch {
                 writeFailureMessage = error.localizedDescription
             }
+        }
+    }
+
+    private func writeSilence(frames: Int64) throws {
+        var remaining = frames
+        while remaining > 0 {
+            let chunk = AVAudioFrameCount(min(remaining, 48_000))
+            guard let silent = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: chunk) else { return }
+            silent.frameLength = chunk
+            if let channels = silent.floatChannelData {
+                for channel in 0..<Int(format.channelCount) {
+                    channels[channel].update(repeating: 0, count: Int(chunk))
+                }
+            }
+            try file.write(from: silent)
+            framesWritten += Int64(chunk)
+            remaining -= Int64(chunk)
         }
     }
 

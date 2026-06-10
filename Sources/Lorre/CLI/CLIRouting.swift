@@ -5,7 +5,9 @@ import Foundation
 /// LaunchServices-injected flags (e.g. `-psn_...`) still launch the GUI.
 /// ArgumentParser meta-flags (--help, -h) are also routed to the CLI.
 enum CLIRouting {
-    static let subcommands: Set<String> = ["transcribe"]
+    // "help" is ArgumentParser's auto-generated subcommand; its own --help
+    // output advertises `Lorre help <subcommand>`, so it must route to CLI.
+    static let subcommands: Set<String> = ["transcribe", "help"]
 
     /// ArgumentParser global flags that should route to CLI even without a subcommand.
     private static let cliMetaFlags: Set<String> = ["--help", "-h"]

@@ -96,6 +96,7 @@ actor FluidAudioTranscriptionService: TranscriptionService {
     private var managerBox: AsrManagerBox?
     private var vadManagerBox: VadManagerBox?
     private var initialized = false
+    private var preparationTask: Task<Void, Error>?
     private var vocabularyBoostingConfiguration = VocabularyBoostingConfiguration()
     /// Optional batch ASR language hint passed to Parakeet's multilingual v3 model.
     /// `.automatic` passes no hint (the model detects the language); a concrete
@@ -134,6 +135,35 @@ actor FluidAudioTranscriptionService: TranscriptionService {
             return
         }
 
+        // Actors are reentrant across awaits: a concurrent caller (e.g.
+        // "Prepare models" clicked while processing just started) must join
+        // the in-flight preparation instead of downloading/loading twice.
+        if let preparationTask {
+            try await preparationTask.value
+            if let onProgress {
+                await onProgress(
+                    FluidAudioProgressSupport.readyUpdate(
+                        phase: .preparing,
+                        component: .asr,
+                        label: "ASR + VAD ready",
+                        detail: "Transcription models are already prepared."
+                    )
+                )
+            }
+            return
+        }
+
+        let task = Task {
+            try await self.performModelPreparation(onProgress: onProgress)
+        }
+        preparationTask = task
+        defer { preparationTask = nil }
+        try await task.value
+    }
+
+    private func performModelPreparation(
+        onProgress: (@Sendable (ProcessingUpdate) async -> Void)?
+    ) async throws {
         if let onProgress {
             await onProgress(
                 ProcessingUpdate(
@@ -609,6 +639,7 @@ actor FluidAudioDiarizationService: SpeakerDiarizationService {
     private var diarizationEngine: DiarizationEngine = .offlineVbx
     private var offlineManagerBox: OfflineDiarizerManagerBox?
     private var offlinePreparedSpeakerHint: DiarizationSpeakerCountHint = .auto
+    private var offlinePreparationTask: Task<Void, Error>?
     private var sortformerModels: SortformerModels?
     private var sortformerDiarizer: SortformerDiarizer?
     private var lsEendModel: LSEENDModel?
@@ -681,20 +712,40 @@ actor FluidAudioDiarizationService: SpeakerDiarizationService {
         onProgress: (@Sendable (ProcessingUpdate) async -> Void)? = nil
     ) async throws {
         let normalizedHint = expectedSpeakers.normalized()
-        if offlineManagerBox != nil, normalizedHint == offlinePreparedSpeakerHint {
-            if let onProgress {
-                await onProgress(
-                    FluidAudioProgressSupport.readyUpdate(
-                        phase: .preparing,
-                        component: .diarization,
-                        label: "Diarization ready",
-                        detail: "Offline diarization models are already prepared."
+        // Join any in-flight preparation first (actors are reentrant across
+        // awaits); re-check the prepared state each time it settles, because
+        // the in-flight run may have prepared a different speaker hint.
+        while true {
+            if offlineManagerBox != nil, normalizedHint == offlinePreparedSpeakerHint {
+                if let onProgress {
+                    await onProgress(
+                        FluidAudioProgressSupport.readyUpdate(
+                            phase: .preparing,
+                            component: .diarization,
+                            label: "Diarization ready",
+                            detail: "Offline diarization models are already prepared."
+                        )
                     )
-                )
+                }
+                return
             }
-            return
+            guard let inFlight = offlinePreparationTask else { break }
+            try? await inFlight.value
+            await Task.yield()
         }
 
+        let task = Task {
+            try await self.performOfflineModelPreparation(normalizedHint: normalizedHint, onProgress: onProgress)
+        }
+        offlinePreparationTask = task
+        defer { offlinePreparationTask = nil }
+        try await task.value
+    }
+
+    private func performOfflineModelPreparation(
+        normalizedHint: DiarizationSpeakerCountHint,
+        onProgress: (@Sendable (ProcessingUpdate) async -> Void)?
+    ) async throws {
         if let onProgress {
             await onProgress(
                 ProcessingUpdate(

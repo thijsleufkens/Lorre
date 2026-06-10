@@ -511,6 +511,7 @@ actor AVFoundationRecorderService: RecorderService {
 
         do {
             let micStart: MicrophoneCaptureStartResult?
+            let microphoneCaptureStartedAt: Date?
             if request.source.includesMicrophone {
                 micStart = try startMicrophoneCapture(
                     in: tempDir,
@@ -519,8 +520,10 @@ actor AVFoundationRecorderService: RecorderService {
                     previewMixer: previewMixer,
                     source: request.source
                 )
+                microphoneCaptureStartedAt = Date()
             } else {
                 micStart = nil
+                microphoneCaptureStartedAt = nil
             }
 
             var systemAudioTempURLForCapture: URL? = nil
@@ -532,6 +535,7 @@ actor AVFoundationRecorderService: RecorderService {
                 _ = try await processTap.start(
                     outputURL: systemTempURL,
                     outputWarmerRequired: !request.source.includesMicrophone,
+                    timelineStart: microphoneCaptureStartedAt,
                     onPCMBuffer: { buffer in
                         if source == .microphoneAndSystemAudio {
                             previewMixer?.enqueue(buffer, source: .systemAudio)
@@ -844,6 +848,16 @@ actor AVFoundationRecorderService: RecorderService {
         if source == .microphoneAndSystemAudio {
             do {
                 try inputNode.setVoiceProcessingEnabled(true)
+                // Voice processing ducks all non-VP audio (browsers, music
+                // players) system-wide by default, which mutes exactly the
+                // audio this mode is trying to record. Keep ducking at the
+                // minimum so Chrome/Spotify stay audible; AEC still removes
+                // the speaker signal from the mic stem.
+                inputNode.voiceProcessingOtherAudioDuckingConfiguration =
+                    AVAudioVoiceProcessingOtherAudioDuckingConfiguration(
+                        enableAdvancedDucking: false,
+                        duckingLevel: .min
+                    )
             } catch {
                 // Voice processing may not be available on every audio device
                 // (e.g. some virtual aggregate inputs). Fall back to raw mic.
@@ -851,12 +865,29 @@ actor AVFoundationRecorderService: RecorderService {
         }
 
         let inputFormat = inputNode.inputFormat(forBus: 0)
-        let writer = try CaptureFileWriterBox(file: AVAudioFile(forWriting: tempURL, settings: inputFormat.settings))
+        // With voice processing enabled the built-in mic reports a >2-channel
+        // format (identical channels). Persist channel 0 as mono: the file
+        // stays 5× smaller, and downstream conversion (mix, live preview)
+        // can't handle >2ch input — AVAudioConverter silently zeroes it.
+        let reduceToMono = inputFormat.channelCount > 2
+        let captureFormat: AVAudioFormat
+        if reduceToMono, let mono = AVAudioFormat(
+            commonFormat: .pcmFormatFloat32,
+            sampleRate: inputFormat.sampleRate,
+            channels: 1,
+            interleaved: false
+        ) {
+            captureFormat = mono
+        } else {
+            captureFormat = inputFormat
+        }
+        let writer = try CaptureFileWriterBox(file: AVAudioFile(forWriting: tempURL, settings: captureFormat.settings))
         let targetFrames = Int((inputFormat.sampleRate * 0.45).rounded())
         let bufferSize = AVAudioFrameCount(max(4096, min(32_768, targetFrames)))
 
         inputNode.removeTap(onBus: 0)
-        inputNode.installTap(onBus: 0, bufferSize: bufferSize, format: inputFormat) { buffer, _ in
+        inputNode.installTap(onBus: 0, bufferSize: bufferSize, format: inputFormat) { rawBuffer, _ in
+            guard let buffer = reduceToMono ? rawBuffer.lorre_monoChannelZero() : rawBuffer else { return }
             writer.write(buffer)
             let meterLevel = buffer.lorre_meterLevel()
             if let combinedMeter {

@@ -120,19 +120,6 @@ enum RecorderAudioUtilities {
         return buffer
     }
 
-    static func loadSamples(from url: URL, targetFormat: AVAudioFormat) throws -> [Float] {
-        let file = try AVAudioFile(forReading: url)
-        let frameCount = AVAudioFrameCount(file.length)
-        guard frameCount > 0 else { return [] }
-        guard let inputBuffer = AVAudioPCMBuffer(pcmFormat: file.processingFormat, frameCapacity: frameCount) else {
-            throw LorreError.recordingStopFailed("Could not load recorded audio for mixing.")
-        }
-        try file.read(into: inputBuffer)
-        let converted = try convert(inputBuffer, to: targetFormat)
-        guard let channelData = converted.floatChannelData else { return [] }
-        return Array(UnsafeBufferPointer(start: channelData[0], count: Int(converted.frameLength)))
-    }
-
     static func write(samples: [Float], to url: URL, format: AVAudioFormat) throws {
         let buffer = try makePCMBuffer(from: samples, format: format)
         try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
@@ -143,46 +130,264 @@ enum RecorderAudioUtilities {
         try file.write(from: buffer)
     }
 
+    /// Mixes the microphone and system stems into the canonical mono file.
+    /// Streams both inputs chunk-wise in two passes (peak scan, then scaled
+    /// write) so multi-hour recordings never need whole stems in memory.
     static func mixToCanonicalFile(
         microphoneURL: URL,
         systemAudioURL: URL,
         destinationURL: URL,
         targetFormat: AVAudioFormat = RecorderAudioUtilities.previewFormat
     ) throws {
-        let microphoneSamples = try loadSamples(from: microphoneURL, targetFormat: targetFormat)
-        let systemSamples = try loadSamples(from: systemAudioURL, targetFormat: targetFormat)
-        let count = max(microphoneSamples.count, systemSamples.count)
-        guard count > 0 else {
-            try write(samples: [], to: destinationURL, format: targetFormat)
-            return
-        }
-
-        let voiceGain: Float = 0.70710677
-        let systemGain: Float = 0.70710677
-        let headroom: Float = 0.8
-        var mixed = Array(repeating: Float(0), count: count)
+        // Pass 1: global peak, so normalization scales the whole mix uniformly.
         var peak: Float = 0
-
-        for index in 0..<count {
-            let microphone = index < microphoneSamples.count ? microphoneSamples[index] : 0
-            let system = index < systemSamples.count ? systemSamples[index] : 0
-            let value = ((microphone * voiceGain) + (system * systemGain)) * headroom
-            mixed[index] = value
-            peak = max(peak, abs(value))
-        }
-
-        if peak > 0.98 {
-            let gain = 0.98 / peak
-            for index in mixed.indices {
-                mixed[index] *= gain
+        var totalFrames = 0
+        try streamMixedChunks(
+            microphoneURL: microphoneURL,
+            systemAudioURL: systemAudioURL,
+            targetFormat: targetFormat
+        ) { chunk in
+            totalFrames += chunk.count
+            for value in chunk {
+                peak = max(peak, abs(value))
             }
         }
 
-        try write(samples: mixed, to: destinationURL, format: targetFormat)
+        guard totalFrames > 0 else {
+            try write(samples: [], to: destinationURL, format: targetFormat)
+            return
+        }
+        let gain: Float = peak > 0.98 ? 0.98 / peak : 1
+
+        // Pass 2: write scaled chunks.
+        try FileManager.default.createDirectory(
+            at: destinationURL.deletingLastPathComponent(),
+            withIntermediateDirectories: true
+        )
+        if FileManager.default.fileExists(atPath: destinationURL.path(percentEncoded: false)) {
+            try FileManager.default.removeItem(at: destinationURL)
+        }
+        let outputFile = try AVAudioFile(forWriting: destinationURL, settings: targetFormat.settings)
+        try streamMixedChunks(
+            microphoneURL: microphoneURL,
+            systemAudioURL: systemAudioURL,
+            targetFormat: targetFormat
+        ) { chunk in
+            let scaled = gain == 1 ? chunk : chunk.map { $0 * gain }
+            let buffer = try makePCMBuffer(from: scaled, format: targetFormat)
+            try outputFile.write(from: buffer)
+        }
+    }
+
+    private static let mixChunkFrames: AVAudioFrameCount = 65_536
+
+    private static func streamMixedChunks(
+        microphoneURL: URL,
+        systemAudioURL: URL,
+        targetFormat: AVAudioFormat,
+        process: ([Float]) throws -> Void
+    ) throws {
+        let microphoneReader = try ChunkedSampleReader(url: microphoneURL, targetFormat: targetFormat)
+        let systemReader = try ChunkedSampleReader(url: systemAudioURL, targetFormat: targetFormat)
+        let voiceGain: Float = 0.70710677
+        let systemGain: Float = 0.70710677
+        let headroom: Float = 0.8
+
+        while true {
+            let microphone = try microphoneReader.next(maxFrames: mixChunkFrames)
+            let system = try systemReader.next(maxFrames: mixChunkFrames)
+            if microphone.isEmpty, system.isEmpty { break }
+
+            let count = max(microphone.count, system.count)
+            var mixed = [Float](repeating: 0, count: count)
+            for index in 0..<count {
+                let microphoneSample = index < microphone.count ? microphone[index] : 0
+                let systemSample = index < system.count ? system[index] : 0
+                mixed[index] = ((microphoneSample * voiceGain) + (systemSample * systemGain)) * headroom
+            }
+            try process(mixed)
+        }
+    }
+
+    /// Reads an audio file in fixed-size chunks, converting to `targetFormat`
+    /// with a persistent converter so resampling state carries across chunks
+    /// and the resampler tail is drained at end-of-stream (the one-shot
+    /// `convert(_:to:)` path truncates the tail of long rate conversions).
+    /// `next(maxFrames:)` returns exactly `maxFrames` samples until the file
+    /// runs out, which keeps two parallel readers sample-aligned.
+    private final class ChunkedSampleReader {
+        private let file: AVAudioFile
+        private let targetFormat: AVAudioFormat
+        private let converter: AVAudioConverter?
+        private var sourceExhausted = false
+        private var converterDrained = false
+
+        /// Format of the buffers fed into the converter. Differs from the
+        /// file's format for >2-channel sources: AVAudioConverter silently
+        /// produces all-zero output when downmixing more than two channels
+        /// to mono (seen with the 5-channel input macOS voice processing
+        /// reports for the built-in mic), so those are reduced to channel 0
+        /// manually before conversion.
+        private let supplyFormat: AVAudioFormat
+        private let reducesToMono: Bool
+
+        init(url: URL, targetFormat: AVAudioFormat) throws {
+            self.file = try AVAudioFile(forReading: url)
+            self.targetFormat = targetFormat
+            let sourceFormat = file.processingFormat
+            if sourceFormat.channelCount > 2 {
+                guard let mono = AVAudioFormat(
+                    commonFormat: .pcmFormatFloat32,
+                    sampleRate: sourceFormat.sampleRate,
+                    channels: 1,
+                    interleaved: false
+                ) else {
+                    throw LorreError.recordingStopFailed("Could not prepare audio format converter.")
+                }
+                self.supplyFormat = mono
+                self.reducesToMono = true
+            } else {
+                self.supplyFormat = sourceFormat
+                self.reducesToMono = false
+            }
+            if supplyFormat == targetFormat {
+                self.converter = nil
+            } else {
+                guard let converter = AVAudioConverter(from: supplyFormat, to: targetFormat) else {
+                    throw LorreError.recordingStopFailed("Could not prepare audio format converter.")
+                }
+                self.converter = converter
+            }
+        }
+
+        private func monoReduced(_ buffer: AVAudioPCMBuffer) -> AVAudioPCMBuffer? {
+            guard reducesToMono else { return buffer }
+            guard let source = buffer.floatChannelData,
+                  let mono = AVAudioPCMBuffer(pcmFormat: supplyFormat, frameCapacity: buffer.frameLength) else {
+                return nil
+            }
+            mono.frameLength = buffer.frameLength
+            mono.floatChannelData?[0].update(from: source[0], count: Int(buffer.frameLength))
+            return mono
+        }
+
+        func next(maxFrames: AVAudioFrameCount) throws -> [Float] {
+            var collected: [Float] = []
+            collected.reserveCapacity(Int(maxFrames))
+            while collected.count < Int(maxFrames) {
+                let produced = try produceSome(upTo: AVAudioFrameCount(Int(maxFrames) - collected.count))
+                if produced.isEmpty { break }
+                collected.append(contentsOf: produced)
+            }
+            return collected
+        }
+
+        private func produceSome(upTo frames: AVAudioFrameCount) throws -> [Float] {
+            guard let converter else {
+                return try readDirectly(upTo: frames)
+            }
+            if converterDrained { return [] }
+
+            guard let outputBuffer = AVAudioPCMBuffer(pcmFormat: targetFormat, frameCapacity: frames) else {
+                throw LorreError.recordingStopFailed("Could not allocate converted audio buffer.")
+            }
+
+            var conversionError: NSError?
+            let status = converter.convert(to: outputBuffer, error: &conversionError) { [self] requested, outStatus in
+                if sourceExhausted {
+                    outStatus.pointee = .endOfStream
+                    return nil
+                }
+                let framesToRead = min(requested, RecorderAudioUtilities.mixChunkFrames)
+                guard let inputBuffer = AVAudioPCMBuffer(
+                    pcmFormat: file.processingFormat,
+                    frameCapacity: framesToRead
+                ) else {
+                    sourceExhausted = true
+                    outStatus.pointee = .endOfStream
+                    return nil
+                }
+                do {
+                    try file.read(into: inputBuffer, frameCount: framesToRead)
+                } catch {
+                    sourceExhausted = true
+                    outStatus.pointee = .endOfStream
+                    return nil
+                }
+                guard inputBuffer.frameLength > 0, let supplied = monoReduced(inputBuffer) else {
+                    sourceExhausted = true
+                    outStatus.pointee = .endOfStream
+                    return nil
+                }
+                outStatus.pointee = .haveData
+                return supplied
+            }
+
+            if let conversionError {
+                throw LorreError.recordingStopFailed(conversionError.localizedDescription)
+            }
+            if status == .error {
+                throw LorreError.recordingStopFailed("Audio conversion failed.")
+            }
+
+            guard outputBuffer.frameLength > 0 else {
+                if status == .endOfStream || sourceExhausted {
+                    converterDrained = true
+                }
+                return []
+            }
+            return Self.monoSamples(from: outputBuffer)
+        }
+
+        private func readDirectly(upTo frames: AVAudioFrameCount) throws -> [Float] {
+            let remaining = file.length - file.framePosition
+            guard remaining > 0 else { return [] }
+            let framesToRead = AVAudioFrameCount(min(Int64(frames), remaining))
+            guard let buffer = AVAudioPCMBuffer(pcmFormat: file.processingFormat, frameCapacity: framesToRead) else {
+                throw LorreError.recordingStopFailed("Could not load recorded audio for mixing.")
+            }
+            try file.read(into: buffer, frameCount: framesToRead)
+            guard buffer.frameLength > 0 else { return [] }
+            return Self.monoSamples(from: buffer)
+        }
+
+        private static func monoSamples(from buffer: AVAudioPCMBuffer) -> [Float] {
+            guard let channelData = buffer.floatChannelData else { return [] }
+            return Array(UnsafeBufferPointer(start: channelData[0], count: Int(buffer.frameLength)))
+        }
     }
 }
 
 extension AVAudioPCMBuffer {
+    /// Reduces a multichannel float buffer to a mono buffer holding channel 0.
+    /// Used for the >2-channel input macOS voice processing reports for the
+    /// built-in mic — AVAudioConverter silently zeroes such input when asked
+    /// to downmix, so channel selection has to happen before any conversion.
+    /// Returns `self` when the buffer is already mono.
+    func lorre_monoChannelZero() -> AVAudioPCMBuffer? {
+        guard format.channelCount > 1 else { return self }
+        guard format.commonFormat == .pcmFormatFloat32, let source = floatChannelData else { return nil }
+        guard let monoFormat = AVAudioFormat(
+            commonFormat: .pcmFormatFloat32,
+            sampleRate: format.sampleRate,
+            channels: 1,
+            interleaved: false
+        ), let mono = AVAudioPCMBuffer(pcmFormat: monoFormat, frameCapacity: frameLength) else {
+            return nil
+        }
+        mono.frameLength = frameLength
+        guard let destination = mono.floatChannelData else { return nil }
+        if format.isInterleaved {
+            let stride = Int(format.channelCount)
+            for frame in 0..<Int(frameLength) {
+                destination[0][frame] = source[0][frame * stride]
+            }
+        } else {
+            destination[0].update(from: source[0], count: Int(frameLength))
+        }
+        return mono
+    }
+
     func lorre_deepCopy() -> AVAudioPCMBuffer? {
         guard let copy = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: frameLength) else {
             return nil

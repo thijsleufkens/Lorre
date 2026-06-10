@@ -20,4 +20,11 @@ final class CLIRoutingTests: XCTestCase {
         XCTAssertTrue(CLIRouting.isCLIInvocation(["/path/Lorre", "--help"]))
         XCTAssertTrue(CLIRouting.isCLIInvocation(["/path/Lorre", "-h"]))
     }
+
+    func testHelpSubcommandRoutesCLI() {
+        // ArgumentParser's own --help output advertises `Lorre help <subcommand>`;
+        // that invocation must reach the CLI, not launch the GUI.
+        XCTAssertTrue(CLIRouting.isCLIInvocation(["/path/Lorre", "help"]))
+        XCTAssertTrue(CLIRouting.isCLIInvocation(["/path/Lorre", "help", "transcribe"]))
+    }
 }

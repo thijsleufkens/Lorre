@@ -57,6 +57,7 @@ actor FluidAudioLiveStreamingRecognizer {
     private var eouManager: StreamingEouAsrManager?
     private var vadManager: VadManager?
     private var preparedPreset: LivePreset?
+    private var preparationTask: Task<Void, Error>?
     private var preview = LiveTranscriptPreview()
     private var previewHandler: (@Sendable (LiveTranscriptPreview) -> Void)?
     private var isStreaming = false
@@ -239,7 +240,34 @@ actor FluidAudioLiveStreamingRecognizer {
         preview
     }
 
+    private var isPreparedForCurrentConfiguration: Bool {
+        let needsSpeakerHints = !knownSpeakers.isEmpty && knownSpeakerReferenceAudioProvider != nil
+        let livePreviewReady = eouManager != nil && vadManager != nil
+        let speakerHintReady = !needsSpeakerHints || (sortformerDiarizer != nil && !sortformerNeedsReprime)
+        return livePreviewReady && speakerHintReady
+    }
+
     private func ensureManagersPrepared(
+        onProgress: (@Sendable (ProcessingUpdate) async -> Void)?
+    ) async throws {
+        // Actors are reentrant across awaits: join any in-flight preparation
+        // instead of loading the streaming models twice, then re-check
+        // readiness (known speakers may have changed while we waited).
+        while !isPreparedForCurrentConfiguration {
+            guard let inFlight = preparationTask else { break }
+            try? await inFlight.value
+            await Task.yield()
+        }
+
+        let task = Task {
+            try await self.performManagersPreparation(onProgress: onProgress)
+        }
+        preparationTask = task
+        defer { preparationTask = nil }
+        try await task.value
+    }
+
+    private func performManagersPreparation(
         onProgress: (@Sendable (ProcessingUpdate) async -> Void)?
     ) async throws {
         let needsSpeakerHints = !knownSpeakers.isEmpty && knownSpeakerReferenceAudioProvider != nil

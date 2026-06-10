@@ -94,6 +94,12 @@ actor FileSessionStore: SessionStore {
 
     func updateSession(_ session: SessionManifest) async throws {
         try ensureBaseDirectories()
+        // Update must never recreate a session that was deleted in the
+        // meantime (e.g. by the user while a processing task is mid-flight).
+        let manifestURL = sessionManifestURL(for: session.id)
+        guard FileManager.default.fileExists(atPath: manifestURL.path(percentEncoded: false)) else {
+            throw LorreError.sessionNotFound
+        }
         try save(session)
     }
 
@@ -114,6 +120,12 @@ actor FileSessionStore: SessionStore {
 
     func saveTranscript(_ transcript: TranscriptDocument) async throws {
         try ensureBaseDirectories()
+        // A transcript belongs to an existing session; writing one must not
+        // resurrect a session directory that was deleted mid-processing.
+        let manifestURL = sessionManifestURL(for: transcript.sessionId)
+        guard FileManager.default.fileExists(atPath: manifestURL.path(percentEncoded: false)) else {
+            throw LorreError.sessionNotFound
+        }
         let url = transcriptURL(for: transcript.sessionId)
         let encoded = try Self.encoder.encode(transcript)
         try AtomicFileWriter.write(encoded, to: url)

@@ -61,11 +61,17 @@ actor KnownSpeakerStore {
         }
         var updatedSpeaker = speaker
         if let sourceURL {
+            let previousClip = speakers[index].referenceClip
             updatedSpeaker.referenceClip = try copyReferenceClipIfNeeded(
                 speakerID: speaker.id,
                 sourceURL: sourceURL,
                 enrollmentData: enrollmentData
             )
+            // Clips are stored as <id>.<ext>; a replacement with a different
+            // extension gets a new name and would leave the old file orphaned.
+            if let previousClip, previousClip.storedFileName != updatedSpeaker.referenceClip?.storedFileName {
+                try? deleteReferenceClipIfPresent(previousClip)
+            }
         }
         speakers[index] = updatedSpeaker
         try saveAll(speakers)

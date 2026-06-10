@@ -42,6 +42,49 @@ final class AutomaticExporterTests: XCTestCase {
         XCTAssertNotNil(object?["exportedAt"])
     }
 
+    func testCollidingFileNamesFromDifferentSessionsDoNotOverwrite() async throws {
+        let sessionA = try decodeFixture(SessionManifest.self, "session-manifest-v1-with-version.json")
+        var sessionB = sessionA
+        sessionB.id = UUID()
+
+        var transcriptA = try decodeFixture(TranscriptDocument.self, "transcript-document-v1.json")
+        transcriptA.sessionId = sessionA.id
+        var transcriptB = transcriptA
+        transcriptB.sessionId = sessionB.id
+
+        let folder = FileManager.default.temporaryDirectory
+            .appendingPathComponent("ae-collision-\(UUID().uuidString)", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: folder) }
+        // Same title + same template ⇒ both sessions render the same file name.
+        let config = AutomaticMarkdownExportConfiguration(
+            isEnabled: true,
+            folderPath: folder.path(percentEncoded: false),
+            fileNameTemplate: "{session_title}"
+        )
+
+        let resultA = try await AutomaticExporter.writeEnvelope(
+            session: sessionA, transcript: transcriptA, configuration: config, exporter: MarkdownExportService()
+        )
+        let resultB = try await AutomaticExporter.writeEnvelope(
+            session: sessionB, transcript: transcriptB, configuration: config, exporter: MarkdownExportService()
+        )
+
+        XCTAssertNotEqual(resultA.json, resultB.json, "A second session must not claim the first session's envelope path")
+
+        func envelopeSessionID(at url: URL) throws -> String? {
+            let object = try JSONSerialization.jsonObject(with: Data(contentsOf: url)) as? [String: Any]
+            return (object?["session"] as? [String: Any])?["id"] as? String
+        }
+        XCTAssertEqual(try envelopeSessionID(at: resultA.json), sessionA.id.uuidString)
+        XCTAssertEqual(try envelopeSessionID(at: resultB.json), sessionB.id.uuidString)
+
+        // Re-exporting the same session must keep updating its own files.
+        let resultA2 = try await AutomaticExporter.writeEnvelope(
+            session: sessionA, transcript: transcriptA, configuration: config, exporter: MarkdownExportService()
+        )
+        XCTAssertEqual(resultA2.json, resultA.json)
+    }
+
     func testThrowsWhenNoFolderConfigured() async throws {
         let session = try decodeFixture(SessionManifest.self, "session-manifest-v1-with-version.json")
         let transcript = try decodeFixture(TranscriptDocument.self, "transcript-document-v1.json")
