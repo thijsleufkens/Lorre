@@ -75,6 +75,8 @@ actor ControlledRecorderService: RecorderService {
 
     func currentMeterLevel() async -> Double { 0.12 }
 
+    func isCapturing() -> Bool { startedAt != nil }
+
     func recordingFileLayout(for source: RecordingSource) async -> RecordingFileLayout {
         switch source {
         case .microphone, .systemAudio:
@@ -197,7 +199,7 @@ func makeTemporaryRoot(named prefix: String) -> URL {
 
 func makeTestDependencies(
     root: URL,
-    store: FileSessionStore? = nil,
+    store: (any SessionStore)? = nil,
     recorder: any RecorderService,
     transcription: any TranscriptionService = MockTranscriptionService(),
     diarization: any SpeakerDiarizationService = MockSpeakerDiarizationService(),

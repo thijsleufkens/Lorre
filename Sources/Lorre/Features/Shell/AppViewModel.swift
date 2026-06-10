@@ -618,6 +618,11 @@ final class AppViewModel: ObservableObject {
                 await self.loadTranscriptForSelectedSession()
                 self.launchProcessing(for: session.id)
             } catch {
+                // If the failure happened before stopRecording ran (e.g.
+                // createSession threw), the mic/tap is still capturing. Tear
+                // it down so "Ready to record" is actually true and the next
+                // Start doesn't hit an already-active recorder.
+                try? await self.dependencies.recorder.cancelRecording()
                 if let createdSessionID {
                     try? await self.dependencies.store.deleteSession(id: createdSessionID)
                     await self.reloadSessions(selectMostRecentIfNeeded: false)
