@@ -861,12 +861,29 @@ actor AVFoundationRecorderService: RecorderService {
         }
 
         let inputFormat = inputNode.inputFormat(forBus: 0)
-        let writer = try CaptureFileWriterBox(file: AVAudioFile(forWriting: tempURL, settings: inputFormat.settings))
+        // With voice processing enabled the built-in mic reports a >2-channel
+        // format (identical channels). Persist channel 0 as mono: the file
+        // stays 5× smaller, and downstream conversion (mix, live preview)
+        // can't handle >2ch input — AVAudioConverter silently zeroes it.
+        let reduceToMono = inputFormat.channelCount > 2
+        let captureFormat: AVAudioFormat
+        if reduceToMono, let mono = AVAudioFormat(
+            commonFormat: .pcmFormatFloat32,
+            sampleRate: inputFormat.sampleRate,
+            channels: 1,
+            interleaved: false
+        ) {
+            captureFormat = mono
+        } else {
+            captureFormat = inputFormat
+        }
+        let writer = try CaptureFileWriterBox(file: AVAudioFile(forWriting: tempURL, settings: captureFormat.settings))
         let targetFrames = Int((inputFormat.sampleRate * 0.45).rounded())
         let bufferSize = AVAudioFrameCount(max(4096, min(32_768, targetFrames)))
 
         inputNode.removeTap(onBus: 0)
-        inputNode.installTap(onBus: 0, bufferSize: bufferSize, format: inputFormat) { buffer, _ in
+        inputNode.installTap(onBus: 0, bufferSize: bufferSize, format: inputFormat) { rawBuffer, _ in
+            guard let buffer = reduceToMono ? rawBuffer.lorre_monoChannelZero() : rawBuffer else { return }
             writer.write(buffer)
             let meterLevel = buffer.lorre_meterLevel()
             if let combinedMeter {

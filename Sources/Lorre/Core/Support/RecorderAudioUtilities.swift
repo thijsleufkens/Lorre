@@ -222,17 +222,53 @@ enum RecorderAudioUtilities {
         private var sourceExhausted = false
         private var converterDrained = false
 
+        /// Format of the buffers fed into the converter. Differs from the
+        /// file's format for >2-channel sources: AVAudioConverter silently
+        /// produces all-zero output when downmixing more than two channels
+        /// to mono (seen with the 5-channel input macOS voice processing
+        /// reports for the built-in mic), so those are reduced to channel 0
+        /// manually before conversion.
+        private let supplyFormat: AVAudioFormat
+        private let reducesToMono: Bool
+
         init(url: URL, targetFormat: AVAudioFormat) throws {
             self.file = try AVAudioFile(forReading: url)
             self.targetFormat = targetFormat
-            if file.processingFormat == targetFormat {
+            let sourceFormat = file.processingFormat
+            if sourceFormat.channelCount > 2 {
+                guard let mono = AVAudioFormat(
+                    commonFormat: .pcmFormatFloat32,
+                    sampleRate: sourceFormat.sampleRate,
+                    channels: 1,
+                    interleaved: false
+                ) else {
+                    throw LorreError.recordingStopFailed("Could not prepare audio format converter.")
+                }
+                self.supplyFormat = mono
+                self.reducesToMono = true
+            } else {
+                self.supplyFormat = sourceFormat
+                self.reducesToMono = false
+            }
+            if supplyFormat == targetFormat {
                 self.converter = nil
             } else {
-                guard let converter = AVAudioConverter(from: file.processingFormat, to: targetFormat) else {
+                guard let converter = AVAudioConverter(from: supplyFormat, to: targetFormat) else {
                     throw LorreError.recordingStopFailed("Could not prepare audio format converter.")
                 }
                 self.converter = converter
             }
+        }
+
+        private func monoReduced(_ buffer: AVAudioPCMBuffer) -> AVAudioPCMBuffer? {
+            guard reducesToMono else { return buffer }
+            guard let source = buffer.floatChannelData,
+                  let mono = AVAudioPCMBuffer(pcmFormat: supplyFormat, frameCapacity: buffer.frameLength) else {
+                return nil
+            }
+            mono.frameLength = buffer.frameLength
+            mono.floatChannelData?[0].update(from: source[0], count: Int(buffer.frameLength))
+            return mono
         }
 
         func next(maxFrames: AVAudioFrameCount) throws -> [Float] {
@@ -278,13 +314,13 @@ enum RecorderAudioUtilities {
                     outStatus.pointee = .endOfStream
                     return nil
                 }
-                guard inputBuffer.frameLength > 0 else {
+                guard inputBuffer.frameLength > 0, let supplied = monoReduced(inputBuffer) else {
                     sourceExhausted = true
                     outStatus.pointee = .endOfStream
                     return nil
                 }
                 outStatus.pointee = .haveData
-                return inputBuffer
+                return supplied
             }
 
             if let conversionError {
@@ -323,6 +359,35 @@ enum RecorderAudioUtilities {
 }
 
 extension AVAudioPCMBuffer {
+    /// Reduces a multichannel float buffer to a mono buffer holding channel 0.
+    /// Used for the >2-channel input macOS voice processing reports for the
+    /// built-in mic — AVAudioConverter silently zeroes such input when asked
+    /// to downmix, so channel selection has to happen before any conversion.
+    /// Returns `self` when the buffer is already mono.
+    func lorre_monoChannelZero() -> AVAudioPCMBuffer? {
+        guard format.channelCount > 1 else { return self }
+        guard format.commonFormat == .pcmFormatFloat32, let source = floatChannelData else { return nil }
+        guard let monoFormat = AVAudioFormat(
+            commonFormat: .pcmFormatFloat32,
+            sampleRate: format.sampleRate,
+            channels: 1,
+            interleaved: false
+        ), let mono = AVAudioPCMBuffer(pcmFormat: monoFormat, frameCapacity: frameLength) else {
+            return nil
+        }
+        mono.frameLength = frameLength
+        guard let destination = mono.floatChannelData else { return nil }
+        if format.isInterleaved {
+            let stride = Int(format.channelCount)
+            for frame in 0..<Int(frameLength) {
+                destination[0][frame] = source[0][frame * stride]
+            }
+        } else {
+            destination[0].update(from: source[0], count: Int(frameLength))
+        }
+        return mono
+    }
+
     func lorre_deepCopy() -> AVAudioPCMBuffer? {
         guard let copy = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: frameLength) else {
             return nil

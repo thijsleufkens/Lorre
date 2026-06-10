@@ -99,6 +99,54 @@ final class RecorderAudioMixTests: XCTestCase {
         XCTAssertEqual(try readSamples(destination).count, 0)
     }
 
+    func testMixesFiveChannelMicStemWithoutSilencingIt() throws {
+        // macOS voice processing reports the built-in mic as a 5-channel
+        // input; AVAudioConverter silently produces zeros for >2ch → mono,
+        // so the mix path must reduce multichannel input itself.
+        let micLayout = AVAudioChannelLayout(layoutTag: kAudioChannelLayoutTag_DiscreteInOrder | 5)!
+        let micFormat = AVAudioFormat(
+            commonFormat: .pcmFormatFloat32, sampleRate: 48_000, interleaved: false, channelLayout: micLayout
+        )
+        let sysFormat = AVAudioFormat(
+            commonFormat: .pcmFormatFloat32, sampleRate: 48_000, channels: 2, interleaved: false
+        )!
+        let mic = try writeInput([Float](repeating: 0.4, count: 48_000), named: "mic5ch.caf", format: micFormat)
+        let sys = try writeInput([Float](repeating: 0.1, count: 48_000), named: "sys.caf", format: sysFormat)
+        let destination = root.appendingPathComponent("mix.caf")
+
+        try RecorderAudioUtilities.mixToCanonicalFile(
+            microphoneURL: mic, systemAudioURL: sys, destinationURL: destination
+        )
+
+        let mixed = try readSamples(destination)
+        let expected: Float = ((0.4 * 0.70710677) + (0.1 * 0.70710677)) * 0.8
+        XCTAssertEqual(mixed[8000], expected, accuracy: 0.02, "The 5-channel mic stem must survive into the mix")
+    }
+
+    func testMonoChannelZeroReductionKeepsSignal() throws {
+        let layout = AVAudioChannelLayout(layoutTag: kAudioChannelLayoutTag_DiscreteInOrder | 5)!
+        let format = AVAudioFormat(
+            commonFormat: .pcmFormatFloat32, sampleRate: 48_000, interleaved: false, channelLayout: layout
+        )
+        let buffer = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: 100)!
+        buffer.frameLength = 100
+        for channel in 0..<5 {
+            for i in 0..<100 {
+                buffer.floatChannelData![channel][i] = channel == 0 ? Float(i) / 100 : -1
+            }
+        }
+
+        let mono = try XCTUnwrap(buffer.lorre_monoChannelZero())
+        XCTAssertEqual(mono.format.channelCount, 1)
+        XCTAssertEqual(mono.format.sampleRate, 48_000)
+        XCTAssertEqual(mono.frameLength, 100)
+        XCTAssertEqual(mono.floatChannelData![0][50], 0.5, accuracy: 0.0001, "Channel 0 must be preserved")
+
+        // A mono buffer passes through untouched.
+        let monoAgain = try XCTUnwrap(mono.lorre_monoChannelZero())
+        XCTAssertTrue(monoAgain === mono)
+    }
+
     func testResamplesStereo48kInputs() throws {
         let inputFormat = AVAudioFormat(
             commonFormat: .pcmFormatFloat32, sampleRate: 48_000, channels: 2, interleaved: false
