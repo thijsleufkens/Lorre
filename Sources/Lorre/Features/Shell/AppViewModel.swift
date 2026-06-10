@@ -92,6 +92,7 @@ final class AppViewModel: ObservableObject {
     private var currentGlobalDictationTarget: GlobalTextInsertionTarget?
     private var currentRecordingStartedAt: Date?
     private var currentProcessingTasks: [UUID: Task<Void, Never>] = [:]
+    private var processingTaskGenerations: [UUID: UUID] = [:]
     private var cachedFilteredSessions: [SessionManifest] = []
     private var cachedViewBrowserSessions: [ShelfFilter: [SessionManifest]] = [:]
     private var cachedFolderBrowserSessions: [String: [SessionManifest]] = [:]
@@ -1053,6 +1054,7 @@ final class AppViewModel: ObservableObject {
 
         currentProcessingTasks[sessionID]?.cancel()
         currentProcessingTasks[sessionID] = nil
+        processingTaskGenerations[sessionID] = nil
         if wasSelected {
             stopPlaybackAndResetState()
         }
@@ -1721,6 +1723,8 @@ final class AppViewModel: ObservableObject {
 
     private func launchProcessing(for sessionID: UUID) {
         currentProcessingTasks[sessionID]?.cancel()
+        let generation = UUID()
+        processingTaskGenerations[sessionID] = generation
         currentProcessingTasks[sessionID] = Task { [weak self] in
             guard let self else { return }
             do {
@@ -1770,6 +1774,10 @@ final class AppViewModel: ObservableObject {
                         self.startWaveformLoading(for: self.selectedSession)
                     }
                 }
+            } catch is CancellationError {
+                // Cancelled by a retry replacing this task, or the session was
+                // deleted mid-processing. Nothing to surface to the user.
+                await self.reloadSessions(selectMostRecentIfNeeded: false)
             } catch {
                 await MainActor.run {
                     self.presentError(error, defaultTitle: "Processing failed")
@@ -1788,7 +1796,12 @@ final class AppViewModel: ObservableObject {
             }
 
             await MainActor.run {
-                self.currentProcessingTasks[sessionID] = nil
+                // Only deregister if this task is still the registered one; a
+                // retry may have replaced it while our error path was running.
+                if self.processingTaskGenerations[sessionID] == generation {
+                    self.currentProcessingTasks[sessionID] = nil
+                    self.processingTaskGenerations[sessionID] = nil
+                }
             }
         }
     }

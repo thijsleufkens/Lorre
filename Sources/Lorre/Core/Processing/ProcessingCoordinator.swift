@@ -80,9 +80,9 @@ actor ProcessingCoordinator {
                     )
                 )
                 try await store.saveTranscript(draftTranscript)
-                session.transcriptFileName = "transcript.json"
-                session.updatedAt = Date()
-                try await store.updateSession(session)
+                try await applyToLatestManifest(&session) { latest in
+                    latest.transcriptFileName = "transcript.json"
+                }
 
                 try await updateSession(
                     &session,
@@ -141,41 +141,53 @@ actor ProcessingCoordinator {
             try await updateSession(&session, status: .processing, phase: .saving, label: "Saving transcript", fraction: 0.95)
             await onProgress(ProcessingUpdate(phase: .saving, label: "Saving transcript", fraction: 0.95))
             try await store.saveTranscript(transcript)
+            let audioDeletedAt: Date?
             if deleteAudioAfterTranscription {
                 try await deleteAudioArtifacts(for: session, in: sessionDir)
-                session.audioDeletedAt = Date()
+                audioDeletedAt = Date()
             } else {
-                session.audioDeletedAt = nil
+                audioDeletedAt = nil
             }
 
-            session.status = .ready
-            session.transcriptFileName = "transcript.json"
-            session.lastErrorMessage = nil
-            session.updatedAt = Date()
-            session.processing = ProcessingSummary(
-                queuedAt: session.processing.queuedAt,
-                startedAt: session.processing.startedAt,
-                completedAt: Date(),
-                progressPhase: nil,
-                progressLabel: "Ready",
-                progressFraction: 1
-            )
-            try await store.updateSession(session)
+            try await applyToLatestManifest(&session) { latest in
+                latest.status = .ready
+                latest.transcriptFileName = "transcript.json"
+                latest.lastErrorMessage = nil
+                latest.audioDeletedAt = audioDeletedAt
+                latest.processing = ProcessingSummary(
+                    queuedAt: latest.processing.queuedAt,
+                    startedAt: latest.processing.startedAt,
+                    completedAt: Date(),
+                    progressPhase: nil,
+                    progressLabel: "Ready",
+                    progressFraction: 1
+                )
+            }
             await onProgress(ProcessingUpdate(phase: .saving, label: "Ready", fraction: 1))
             return transcript
+        } catch is CancellationError {
+            // The session was deleted mid-flight or the task was cancelled
+            // (e.g. retry replaced it). Leave no trace on disk and let the
+            // caller dismiss silently.
+            throw CancellationError()
         } catch {
-            session.status = .error
-            session.updatedAt = Date()
-            session.lastErrorMessage = error.localizedDescription
-            session.processing = ProcessingSummary(
-                queuedAt: session.processing.queuedAt,
-                startedAt: session.processing.startedAt,
+            // A session that no longer exists was deleted by the user while
+            // processing ran; report that as cancellation, not as a failure.
+            guard var latest = (try? await store.loadSession(id: sessionId)) ?? nil else {
+                throw CancellationError()
+            }
+            latest.status = .error
+            latest.updatedAt = Date()
+            latest.lastErrorMessage = error.localizedDescription
+            latest.processing = ProcessingSummary(
+                queuedAt: latest.processing.queuedAt,
+                startedAt: latest.processing.startedAt,
                 completedAt: Date(),
                 progressPhase: nil,
                 progressLabel: "Error",
-                progressFraction: session.processing.progressFraction
+                progressFraction: latest.processing.progressFraction
             )
-            try? await store.updateSession(session)
+            try? await store.updateSession(latest)
             throw LorreError.processingFailed(error.localizedDescription)
         }
     }
@@ -231,18 +243,37 @@ actor ProcessingCoordinator {
         label: String,
         fraction: Double
     ) async throws {
-        let now = Date()
-        session.status = status
-        session.updatedAt = now
-        session.processing = ProcessingSummary(
-            queuedAt: session.processing.queuedAt ?? now,
-            startedAt: session.processing.startedAt ?? now,
-            completedAt: nil,
-            progressPhase: phase,
-            progressLabel: label,
-            progressFraction: fraction
-        )
-        try await store.updateSession(session)
+        try await applyToLatestManifest(&session) { latest in
+            let now = Date()
+            latest.status = status
+            latest.processing = ProcessingSummary(
+                queuedAt: latest.processing.queuedAt ?? now,
+                startedAt: latest.processing.startedAt ?? now,
+                completedAt: nil,
+                progressPhase: phase,
+                progressLabel: label,
+                progressFraction: fraction
+            )
+        }
+    }
+
+    /// Reloads the manifest from disk, applies `mutate`, and writes it back.
+    /// Working from the latest on-disk state (instead of the snapshot taken at
+    /// the start of `process`) keeps concurrent user edits — rename, notes,
+    /// folder moves — intact. A manifest that no longer exists means the user
+    /// deleted the session mid-processing; that is surfaced as cancellation.
+    private func applyToLatestManifest(
+        _ session: inout SessionManifest,
+        _ mutate: (inout SessionManifest) -> Void
+    ) async throws {
+        try Task.checkCancellation()
+        guard var latest = try await store.loadSession(id: session.id) else {
+            throw CancellationError()
+        }
+        mutate(&latest)
+        latest.updatedAt = Date()
+        try await store.updateSession(latest)
+        session = latest
     }
 
     private func writeDiarizationDebugArtifact(
