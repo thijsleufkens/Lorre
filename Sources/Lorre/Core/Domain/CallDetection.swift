@@ -306,7 +306,10 @@ actor CallDetectionEngine {
 
     private func score(_ sample: CallSignalSample) -> ScoredSignal? {
         let frontmostRule = rule(for: sample.frontmostBundleID)
-        let runningRule = sample.runningBundleIDs.compactMap(rule(for:)).first
+        // A media app earlier in the running list must not shadow a
+        // communication app behind it (Spotify idling ≠ no Zoom call).
+        let runningRules = sample.runningBundleIDs.compactMap(rule(for:))
+        let runningRule = runningRules.first(where: { $0.category == .communication }) ?? runningRules.first
         let titleMatch = bestTitleMatch(in: sample.windowTitleHints, frontmostRule: frontmostRule, runningRule: runningRule)
 
         let selectedRule = frontmostRule ?? titleMatch?.rule ?? runningRule

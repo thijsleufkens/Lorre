@@ -143,6 +143,29 @@ final class CallDetectionTests: XCTestCase {
         XCTAssertNil(event)
     }
 
+    func testBackgroundCommunicationAppIsNotShadowedByMediaAppEarlierInRunningList() async {
+        let engine = CallDetectionEngine(debounceSeconds: 0)
+        let event = await engine.ingest(
+            CallSignalSample(
+                observedAt: Date(timeIntervalSince1970: 1_000),
+                frontmostBundleID: "com.apple.finder",
+                runningBundleIDs: ["com.spotify.client", "us.zoom.xos"],
+                captureDeviceUsage: CaptureDeviceUsageSummary(
+                    isCameraInUseByAnotherApplication: true,
+                    isMicrophoneInUseByAnotherApplication: true
+                )
+            ),
+            configuration: enabledConfiguration
+        )
+
+        guard case let .candidateDetected(candidate) = event else {
+            XCTFail("Expected the background Zoom call to be detected despite Spotify appearing first")
+            return
+        }
+        XCTAssertEqual(candidate.appDisplayName, "Zoom")
+        XCTAssertTrue(candidate.reasons.contains(.knownCommunicationAppRunning))
+    }
+
     func testCandidateEndsAfterGracePeriodWithoutSignal() async {
         let engine = CallDetectionEngine(debounceSeconds: 0, endGraceSeconds: 20)
         let start = Date(timeIntervalSince1970: 1_000)
