@@ -260,11 +260,29 @@ final class ProcessTapSystemAudioCapture: @unchecked Sendable {
             ) { [weak writer] _, inputData, _, _, _ in
                 guard let writer else { return }
 
-                guard let rawBuffer = AVAudioPCMBuffer(
+                // Normally the aggregate has exactly one input stream (the
+                // tap) and the whole ABL wraps directly. When macOS voice
+                // processing is active elsewhere in this process (mic+system
+                // mode), the anchored output device grows an extra input
+                // stream (the AEC reference) and the ABL carries TWO
+                // interleaved streams — the whole-ABL wrap then fails. The
+                // tap's stream is the last one (sub-device streams precede
+                // sub-tap streams), so fall back to wrapping just that.
+                var rawBufferCandidate = AVAudioPCMBuffer(
                     pcmFormat: tapFormat,
                     bufferListNoCopy: inputData,
                     deallocator: nil
-                ) else {
+                )
+                if rawBufferCandidate == nil {
+                    let ablPointer = UnsafeMutableAudioBufferListPointer(UnsafeMutablePointer(mutating: inputData))
+                    if ablPointer.count > 1, let lastStream = ablPointer.last {
+                        var singleStreamList = AudioBufferList(mNumberBuffers: 1, mBuffers: lastStream)
+                        rawBufferCandidate = withUnsafeMutablePointer(to: &singleStreamList) { pointer in
+                            AVAudioPCMBuffer(pcmFormat: tapFormat, bufferListNoCopy: pointer, deallocator: nil)
+                        }
+                    }
+                }
+                guard let rawBuffer = rawBufferCandidate else {
                     return
                 }
 
