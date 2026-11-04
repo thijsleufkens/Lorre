@@ -81,10 +81,16 @@ struct MacCallWatcherService: CallWatcherService {
             return []
         }
 
+        // `NSRunningApplication.processIdentifier` returns -1 for apps that
+        // aren't fully launched, so several running apps can share a PID.
+        // `Dictionary(uniqueKeysWithValues:)` traps on duplicate keys, so build
+        // the lookup with a collision-tolerant initializer instead — a bogus PID
+        // never matches a real window's ownerPID, so dropping collisions is safe.
         let runningAppsByProcessID = Dictionary(
-            uniqueKeysWithValues: NSWorkspace.shared.runningApplications.map { app in
+            NSWorkspace.shared.runningApplications.map { app in
                 (app.processIdentifier, app)
-            }
+            },
+            uniquingKeysWith: { first, _ in first }
         )
 
         return windowInfo.compactMap { info in
