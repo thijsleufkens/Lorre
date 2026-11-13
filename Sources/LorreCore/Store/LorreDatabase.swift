@@ -15,8 +15,20 @@ public final class LorreDatabase: Sendable {
         try Schema.migrator.migrate(queue)
     }
 
-    private init(queue: DatabaseQueue) throws {
+    private init(queue: DatabaseQueue, migrate: Bool = true) throws {
         self.queue = queue
+        if migrate { try Schema.migrator.migrate(queue) }
+    }
+
+    /// An in-memory database migrated only up to the given schema version, to test upgrades.
+    static func inMemory(upTo migration: String) throws -> LorreDatabase {
+        let queue = try DatabaseQueue()
+        try Schema.migrator.migrate(queue, upTo: migration)
+        return try LorreDatabase(queue: queue, migrate: false)
+    }
+
+    /// Brings a partially migrated database up to date.
+    func migrateToLatest() throws {
         try Schema.migrator.migrate(queue)
     }
 

@@ -3,7 +3,7 @@
 import CoreMedia
 import Foundation
 
-enum RecorderAudioUtilities {
+public enum RecorderAudioUtilities {
     private final class ConversionInputState: @unchecked Sendable {
         private let lock = NSLock()
         private var hasSuppliedInput = false
@@ -26,24 +26,24 @@ enum RecorderAudioUtilities {
         }
     }
 
-    static let previewFormat: AVAudioFormat = {
+    public static let previewFormat: AVAudioFormat = {
         AVAudioFormat(commonFormat: .pcmFormatFloat32, sampleRate: 16_000, channels: 1, interleaved: false)!
     }()
 
-    static func extractPCMBuffer(from sampleBuffer: CMSampleBuffer) throws -> AVAudioPCMBuffer {
+    public static func extractPCMBuffer(from sampleBuffer: CMSampleBuffer) throws -> AVAudioPCMBuffer {
         guard let formatDescription = CMSampleBufferGetFormatDescription(sampleBuffer),
               let streamDescription = CMAudioFormatDescriptionGetStreamBasicDescription(formatDescription) else {
-            throw LorreError.recordingStartFailed("System audio stream format is unavailable.")
+            throw CaptureError.startFailed("System audio stream format is unavailable.")
         }
 
         var sourceStreamDescription = streamDescription.pointee
         guard let sourceFormat = AVAudioFormat(streamDescription: &sourceStreamDescription) else {
-            throw LorreError.recordingStartFailed("System audio format is unsupported.")
+            throw CaptureError.startFailed("System audio format is unsupported.")
         }
 
         let frameCount = AVAudioFrameCount(CMSampleBufferGetNumSamples(sampleBuffer))
         guard let buffer = AVAudioPCMBuffer(pcmFormat: sourceFormat, frameCapacity: frameCount) else {
-            throw LorreError.recordingStartFailed("Could not allocate system audio buffer.")
+            throw CaptureError.startFailed("Could not allocate system audio buffer.")
         }
         buffer.frameLength = frameCount
 
@@ -54,21 +54,21 @@ enum RecorderAudioUtilities {
             into: buffer.mutableAudioBufferList
         )
         guard status == noErr else {
-            throw LorreError.recordingStartFailed("Could not copy system audio samples (status: \(status)).")
+            throw CaptureError.startFailed("Could not copy system audio samples (status: \(status)).")
         }
         return buffer
     }
 
-    static func convert(_ buffer: AVAudioPCMBuffer, to outputFormat: AVAudioFormat) throws -> AVAudioPCMBuffer {
+    public static func convert(_ buffer: AVAudioPCMBuffer, to outputFormat: AVAudioFormat) throws -> AVAudioPCMBuffer {
         if buffer.format == outputFormat {
             guard let copy = buffer.lorre_deepCopy() else {
-                throw LorreError.recordingStartFailed("Could not copy audio buffer.")
+                throw CaptureError.startFailed("Could not copy audio buffer.")
             }
             return copy
         }
 
         guard let converter = AVAudioConverter(from: buffer.format, to: outputFormat) else {
-            throw LorreError.recordingStartFailed("Could not prepare audio format converter.")
+            throw CaptureError.startFailed("Could not prepare audio format converter.")
         }
 
         let ratio = outputFormat.sampleRate / buffer.format.sampleRate
@@ -77,7 +77,7 @@ enum RecorderAudioUtilities {
             pcmFormat: outputFormat,
             frameCapacity: AVAudioFrameCount(estimatedCapacity)
         ) else {
-            throw LorreError.recordingStartFailed("Could not allocate converted audio buffer.")
+            throw CaptureError.startFailed("Could not allocate converted audio buffer.")
         }
 
         let inputState = ConversionInputState()
@@ -87,27 +87,27 @@ enum RecorderAudioUtilities {
         }
 
         if let conversionError {
-            throw LorreError.recordingStartFailed(conversionError.localizedDescription)
+            throw CaptureError.startFailed(conversionError.localizedDescription)
         }
 
         guard status == .haveData || status == .inputRanDry || status == .endOfStream else {
-            throw LorreError.recordingStartFailed("Audio conversion failed.")
+            throw CaptureError.startFailed("Audio conversion failed.")
         }
         return outputBuffer
     }
 
-    static func makePCMBuffer(from samples: [Float], format: AVAudioFormat) throws -> AVAudioPCMBuffer {
+    public static func makePCMBuffer(from samples: [Float], format: AVAudioFormat) throws -> AVAudioPCMBuffer {
         guard format.commonFormat == .pcmFormatFloat32,
               let buffer = AVAudioPCMBuffer(
                 pcmFormat: format,
                 frameCapacity: AVAudioFrameCount(samples.count)
               ) else {
-            throw LorreError.recordingStartFailed("Could not allocate mixed audio buffer.")
+            throw CaptureError.startFailed("Could not allocate mixed audio buffer.")
         }
 
         buffer.frameLength = AVAudioFrameCount(samples.count)
         guard let channelData = buffer.floatChannelData else {
-            throw LorreError.recordingStartFailed("Mixed audio buffer has no channel data.")
+            throw CaptureError.startFailed("Mixed audio buffer has no channel data.")
         }
 
         let channelCount = Int(format.channelCount)
@@ -120,7 +120,7 @@ enum RecorderAudioUtilities {
         return buffer
     }
 
-    static func write(samples: [Float], to url: URL, format: AVAudioFormat) throws {
+    public static func write(samples: [Float], to url: URL, format: AVAudioFormat) throws {
         let buffer = try makePCMBuffer(from: samples, format: format)
         try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
         if FileManager.default.fileExists(atPath: url.path(percentEncoded: false)) {
@@ -133,7 +133,7 @@ enum RecorderAudioUtilities {
     /// Mixes the microphone and system stems into the canonical mono file.
     /// Streams both inputs chunk-wise in two passes (peak scan, then scaled
     /// write) so multi-hour recordings never need whole stems in memory.
-    static func mixToCanonicalFile(
+    public static func mixToCanonicalFile(
         microphoneURL: URL,
         systemAudioURL: URL,
         destinationURL: URL,
@@ -242,7 +242,7 @@ enum RecorderAudioUtilities {
                     channels: 1,
                     interleaved: false
                 ) else {
-                    throw LorreError.recordingStopFailed("Could not prepare audio format converter.")
+                    throw CaptureError.stopFailed("Could not prepare audio format converter.")
                 }
                 self.supplyFormat = mono
                 self.reducesToMono = true
@@ -254,7 +254,7 @@ enum RecorderAudioUtilities {
                 self.converter = nil
             } else {
                 guard let converter = AVAudioConverter(from: supplyFormat, to: targetFormat) else {
-                    throw LorreError.recordingStopFailed("Could not prepare audio format converter.")
+                    throw CaptureError.stopFailed("Could not prepare audio format converter.")
                 }
                 self.converter = converter
             }
@@ -289,7 +289,7 @@ enum RecorderAudioUtilities {
             if converterDrained { return [] }
 
             guard let outputBuffer = AVAudioPCMBuffer(pcmFormat: targetFormat, frameCapacity: frames) else {
-                throw LorreError.recordingStopFailed("Could not allocate converted audio buffer.")
+                throw CaptureError.stopFailed("Could not allocate converted audio buffer.")
             }
 
             var conversionError: NSError?
@@ -324,10 +324,10 @@ enum RecorderAudioUtilities {
             }
 
             if let conversionError {
-                throw LorreError.recordingStopFailed(conversionError.localizedDescription)
+                throw CaptureError.stopFailed(conversionError.localizedDescription)
             }
             if status == .error {
-                throw LorreError.recordingStopFailed("Audio conversion failed.")
+                throw CaptureError.stopFailed("Audio conversion failed.")
             }
 
             guard outputBuffer.frameLength > 0 else {
@@ -344,7 +344,7 @@ enum RecorderAudioUtilities {
             guard remaining > 0 else { return [] }
             let framesToRead = AVAudioFrameCount(min(Int64(frames), remaining))
             guard let buffer = AVAudioPCMBuffer(pcmFormat: file.processingFormat, frameCapacity: framesToRead) else {
-                throw LorreError.recordingStopFailed("Could not load recorded audio for mixing.")
+                throw CaptureError.stopFailed("Could not load recorded audio for mixing.")
             }
             try file.read(into: buffer, frameCount: framesToRead)
             guard buffer.frameLength > 0 else { return [] }
@@ -358,7 +358,7 @@ enum RecorderAudioUtilities {
     }
 }
 
-extension AVAudioPCMBuffer {
+public extension AVAudioPCMBuffer {
     /// Reduces a multichannel float buffer to a mono buffer holding channel 0.
     /// Used for the >2-channel input macOS voice processing reports for the
     /// built-in mic — AVAudioConverter silently zeroes such input when asked

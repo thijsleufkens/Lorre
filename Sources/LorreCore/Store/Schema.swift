@@ -11,6 +11,12 @@ enum Schema {
                 table.column("text")
             }
         }
+        migrator.registerMigration("v2") { db in
+            try db.execute(sql: """
+                ALTER TABLE conversation ADD COLUMN captureSource TEXT;
+                ALTER TABLE conversation ADD COLUMN lastError TEXT;
+                """)
+        }
         return migrator
     }
 

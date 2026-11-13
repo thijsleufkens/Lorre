@@ -22,6 +22,29 @@ final class LorreDatabaseTests: XCTestCase {
         XCTAssertEqual(try reopened.conversation(id: conversation.id), conversation)
     }
 
+    func testUpgradeFromV1KeepsRowsAndAddsCaptureFields() throws {
+        let database = try LorreDatabase.inMemory(upTo: "v1")
+        try database.queue.write { db in
+            try db.execute(sql: """
+                INSERT INTO conversation (id, title, type, state, startedAt, createdAt, updatedAt)
+                VALUES ('11111111-1111-1111-1111-111111111111', 'Old', 'other', 'proposed',
+                        '2026-10-08 10:00:00.000', '2026-10-08 10:00:00.000', '2026-10-08 10:00:00.000')
+                """)
+        }
+        try database.migrateToLatest()
+
+        let store = ConversationStore(database: database)
+        var conversation = try XCTUnwrap(store.conversation(id: UUID(uuidString: "11111111-1111-1111-1111-111111111111")!))
+        XCTAssertEqual(conversation.title, "Old")
+        XCTAssertNil(conversation.captureSource)
+        XCTAssertNil(conversation.lastError)
+
+        conversation.captureSource = .microphoneAndSystemAudio
+        conversation.lastError = "x"
+        try store.save(conversation)
+        XCTAssertEqual(try store.conversation(id: conversation.id), conversation)
+    }
+
     func testOpeningCreatesTheParentFolder() throws {
         let root = try TemporaryRoot()
         let nested = root.paths.root.appendingPathComponent("a/b/lorre.sqlite")

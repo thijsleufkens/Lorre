@@ -4,6 +4,7 @@ import AVFoundation
 import AppKit
 #endif
 import Foundation
+import LorreCapture
 
 actor AVFoundationRecorderService: RecorderService {
     private enum PermissionSettingsPane {

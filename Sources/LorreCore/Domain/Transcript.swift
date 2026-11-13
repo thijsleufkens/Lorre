@@ -2,6 +2,33 @@ import Foundation
 
 public enum TrackKind: String, Codable, CaseIterable, Sendable {
     case mix, microphone, system, device
+
+    /// The file a track of this kind is written to inside a conversation folder.
+    public var fileName: String {
+        switch self {
+        case .mix: "mix.caf"
+        case .microphone: "microphone.caf"
+        case .system: "system-audio.caf"
+        case .device: "device.caf"
+        }
+    }
+}
+
+/// What a recording captures.
+public enum CaptureSource: String, Codable, CaseIterable, Sendable {
+    case microphone, systemAudio, microphoneAndSystemAudio
+
+    public var includesMicrophone: Bool { self != .systemAudio }
+    public var includesSystemAudio: Bool { self != .microphone }
+
+    /// The tracks a recording from this source produces.
+    public var trackKinds: [TrackKind] {
+        switch self {
+        case .microphone: [.microphone]
+        case .systemAudio: [.system]
+        case .microphoneAndSystemAudio: [.microphone, .system]
+        }
+    }
 }
 
 /// One captured audio source of a conversation.

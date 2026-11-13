@@ -41,6 +41,43 @@ public struct ConversationStore: Sendable {
         try database.queue.read { db in try Conversation.fetchOne(db, key: id.uuidString) }
     }
 
+    /// Conversations in one of the given states, oldest first (the order in which to work through them).
+    public func conversations(inStates states: [ConversationState]) throws -> [Conversation] {
+        guard !states.isEmpty else { return [] }
+        let placeholders = Array(repeating: "?", count: states.count).joined(separator: ", ")
+        return try database.queue.read { db in
+            try Conversation.fetchAll(
+                db,
+                sql: "SELECT * FROM conversation WHERE state IN (\(placeholders)) ORDER BY startedAt, id",
+                arguments: StatementArguments(states.map(\.rawValue))
+            )
+        }
+    }
+
+    /// Moves a conversation to a new state and replaces its error message (nil clears it).
+    /// Returns the updated conversation, or nil when it does not exist.
+    @discardableResult
+    public func setState(
+        _ state: ConversationState,
+        lastError: String?,
+        for id: UUID,
+        now: Date = Date()
+    ) throws -> Conversation? {
+        try database.queue.write { db in
+            guard var conversation = try Conversation.fetchOne(db, key: id.uuidString) else { return nil }
+            conversation.state = state
+            conversation.lastError = lastError
+            conversation.updatedAt = now
+            try conversation.update(db)
+            return conversation
+        }
+    }
+
+    /// The most recent conversations, newest first.
+    public func recentConversations(limit: Int) throws -> [ConversationSummary] {
+        Array(try listConversations().prefix(limit))
+    }
+
     /// All conversations, newest first.
     public func listConversations() throws -> [ConversationSummary] {
         try database.queue.read { db in

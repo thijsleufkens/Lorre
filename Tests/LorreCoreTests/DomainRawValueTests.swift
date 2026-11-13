@@ -19,6 +19,13 @@ final class DomainRawValueTests: XCTestCase {
         XCTAssertEqual(TrackKind.allCases.map(\.rawValue), ["mix", "microphone", "system", "device"])
     }
 
+    func testCaptureSource() {
+        XCTAssertEqual(
+            CaptureSource.allCases.map(\.rawValue),
+            ["microphone", "systemAudio", "microphoneAndSystemAudio"]
+        )
+    }
+
     func testOutcomeKind() {
         XCTAssertEqual(
             OutcomeKind.allCases.map(\.rawValue),

@@ -1,7 +1,7 @@
 import AVFoundation
 import Foundation
 import XCTest
-@testable import Lorre
+@testable import LorreCapture
 
 /// Characterization tests for `mixToCanonicalFile` — they pin the mixing
 /// contract (gains, padding, global peak normalization, resampling) so the
@@ -36,7 +36,7 @@ final class RecorderAudioMixTests: XCTestCase {
         var samples: [Float] = []
         while file.framePosition < file.length {
             guard let buffer = AVAudioPCMBuffer(pcmFormat: file.processingFormat, frameCapacity: 8192) else {
-                throw LorreError.persistenceFailed("Could not allocate read buffer")
+                throw CaptureError.stopFailed("Could not allocate read buffer")
             }
             try file.read(into: buffer)
             guard buffer.frameLength > 0, let channelData = buffer.floatChannelData else { break }

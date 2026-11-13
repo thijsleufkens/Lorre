@@ -29,11 +29,13 @@ import os
 /// capture.stop()
 /// ```
 @available(macOS 15.0, *)
-final class ProcessTapSystemAudioCapture: @unchecked Sendable {
-    struct StartResult {
-        let outputURL: URL
-        let startedAt: Date
+public final class ProcessTapSystemAudioCapture: @unchecked Sendable {
+    public struct StartResult {
+        public let outputURL: URL
+        public let startedAt: Date
     }
+
+    public init() {}
 
     private let logger = Logger(subsystem: "lorre", category: "ProcessTapSystemAudio")
 
@@ -41,8 +43,10 @@ final class ProcessTapSystemAudioCapture: @unchecked Sendable {
     private var tapID: AudioObjectID?
     private var aggregateID: AudioObjectID?
     private var ioProcID: AudioDeviceIOProcID?
-    private var writer: ProcessTapAudioWriter?
+    private var writer: TimelineAudioWriter?
     private var warmer: AudioOutputWarmer?
+    /// The writer's failure, kept after `stop()` releases the writer.
+    private var failureAtStop: String?
 
     private let ioQueue = DispatchQueue(
         label: "Lorre.ProcessTap.IO",
@@ -62,7 +66,7 @@ final class ProcessTapSystemAudioCapture: @unchecked Sendable {
     /// - Parameter timelineStart: t=0 of the recording for gap padding in the
     ///   written stem. Pass the mic capture start in mic+system mode so both
     ///   stems share the same timeline; defaults to the tap's own start.
-    func start(
+    public func start(
         outputURL: URL,
         outputWarmerRequired: Bool,
         timelineStart: Date? = nil,
@@ -82,13 +86,14 @@ final class ProcessTapSystemAudioCapture: @unchecked Sendable {
 
     /// Stop the IOProc, destroy the aggregate device and process tap. Safe to
     /// call multiple times; subsequent calls are no-ops.
-    func stop() {
+    public func stop() {
         let (aggregateID, tapID, procID, writer, warmer) = lock.withLock {
             let a = self.aggregateID
             let t = self.tapID
             let p = self.ioProcID
             let w = self.writer
             let wm = self.warmer
+            self.failureAtStop = w?.failureMessage() ?? self.failureAtStop
             self.aggregateID = nil
             self.tapID = nil
             self.ioProcID = nil
@@ -131,8 +136,8 @@ final class ProcessTapSystemAudioCapture: @unchecked Sendable {
     /// Returns the latest write-failure message from the underlying writer, or nil if none.
     /// Matches the contract of `SystemAudioCaptureBox.failure()` so the recording service
     /// can poll the same way regardless of capture backend.
-    func writeFailure() -> String? {
-        lock.withLock { writer?.failureMessage() }
+    public func writeFailure() -> String? {
+        lock.withLock { writer?.failureMessage() ?? failureAtStop }
     }
 
     // MARK: - Deinit
@@ -196,7 +201,7 @@ final class ProcessTapSystemAudioCapture: @unchecked Sendable {
             var tapID = AudioObjectID(kAudioObjectUnknown)
             let tapStatus = AudioHardwareCreateProcessTap(description, &tapID)
             guard tapStatus == noErr, tapID != AudioObjectID(kAudioObjectUnknown) else {
-                throw LorreError.recordingStartFailed(
+                throw CaptureError.startFailed(
                     "AudioHardwareCreateProcessTap failed (status: \(tapStatus))."
                 )
             }
@@ -240,7 +245,7 @@ final class ProcessTapSystemAudioCapture: @unchecked Sendable {
                 &aggregateID
             )
             guard aggregateStatus == noErr, aggregateID != AudioObjectID(kAudioObjectUnknown) else {
-                throw LorreError.recordingStartFailed(
+                throw CaptureError.startFailed(
                     "AudioHardwareCreateAggregateDevice failed (status: \(aggregateStatus))."
                 )
             }
@@ -255,7 +260,7 @@ final class ProcessTapSystemAudioCapture: @unchecked Sendable {
                 channels: 2,
                 interleaved: false
             )!
-            let writer = try ProcessTapAudioWriter(outputURL: outputURL, format: writerFormat)
+            let writer = try TimelineAudioWriter(outputURL: outputURL, format: writerFormat)
 
             // ── Step 8: Install the I/O proc ──────────────────────────────────
             var procID: AudioDeviceIOProcID? = nil
@@ -316,7 +321,7 @@ final class ProcessTapSystemAudioCapture: @unchecked Sendable {
             }
 
             guard ioStatus == noErr, let procID else {
-                throw LorreError.recordingStartFailed(
+                throw CaptureError.startFailed(
                     "AudioDeviceCreateIOProcIDWithBlock failed (status: \(ioStatus))."
                 )
             }
@@ -325,7 +330,7 @@ final class ProcessTapSystemAudioCapture: @unchecked Sendable {
             // ── Step 9: Start the device ──────────────────────────────────────
             let startStatus = AudioDeviceStart(aggregateID, procID)
             guard startStatus == noErr else {
-                throw LorreError.recordingStartFailed(
+                throw CaptureError.startFailed(
                     "AudioDeviceStart failed (status: \(startStatus))."
                 )
             }
@@ -389,7 +394,7 @@ final class ProcessTapSystemAudioCapture: @unchecked Sendable {
             &dataSize
         )
         guard status == noErr, dataSize > 0 else {
-            throw LorreError.recordingStartFailed(
+            throw CaptureError.startFailed(
                 "Could not query process object list size (status: \(status))."
             )
         }
@@ -407,7 +412,7 @@ final class ProcessTapSystemAudioCapture: @unchecked Sendable {
             &objectIDs
         )
         guard status == noErr else {
-            throw LorreError.recordingStartFailed(
+            throw CaptureError.startFailed(
                 "Could not fetch process object list (status: \(status))."
             )
         }
@@ -440,7 +445,7 @@ final class ProcessTapSystemAudioCapture: @unchecked Sendable {
         guard ownAudioObjectID != AudioObjectID(kAudioObjectUnknown) else {
             let pid = ownPID
             logger.warning("Own process PID \(pid, privacy: .public) not found in CoreAudio process list.")
-            throw LorreError.recordingStartFailed(
+            throw CaptureError.startFailed(
                 "Could not find this process (PID \(ownPID)) in the CoreAudio "
                 + "process object list. Process tap cannot be created safely."
             )
@@ -472,14 +477,14 @@ final class ProcessTapSystemAudioCapture: @unchecked Sendable {
         }
 
         guard status == noErr, let unmanaged = unmanagedUID else {
-            throw LorreError.recordingStartFailed(
+            throw CaptureError.startFailed(
                 "Could not query process tap UID (status: \(status))."
             )
         }
 
         let uid = unmanaged.takeRetainedValue() as String
         guard !uid.isEmpty else {
-            throw LorreError.recordingStartFailed(
+            throw CaptureError.startFailed(
                 "Process tap UID is unexpectedly empty."
             )
         }
@@ -507,12 +512,12 @@ final class ProcessTapSystemAudioCapture: @unchecked Sendable {
             &asbd
         )
         guard status == noErr else {
-            throw LorreError.recordingStartFailed(
+            throw CaptureError.startFailed(
                 "Could not query tap stream format (status: \(status))."
             )
         }
         guard let format = AVAudioFormat(streamDescription: &asbd) else {
-            throw LorreError.recordingStartFailed(
+            throw CaptureError.startFailed(
                 "Tap stream format is not a valid PCM AVAudioFormat."
             )
         }
@@ -539,7 +544,7 @@ final class ProcessTapSystemAudioCapture: @unchecked Sendable {
             &deviceID
         )
         guard status == noErr, deviceID != AudioObjectID(kAudioObjectUnknown) else {
-            throw LorreError.recordingStartFailed(
+            throw CaptureError.startFailed(
                 "Could not resolve default system output device (status: \(status))."
             )
         }
@@ -566,13 +571,13 @@ final class ProcessTapSystemAudioCapture: @unchecked Sendable {
             )
         }
         guard status == noErr, let unmanaged = unmanagedUID else {
-            throw LorreError.recordingStartFailed(
+            throw CaptureError.startFailed(
                 "Could not query device UID for AudioObjectID \(deviceID) (status: \(status))."
             )
         }
         let uid = unmanaged.takeRetainedValue() as String
         guard !uid.isEmpty else {
-            throw LorreError.recordingStartFailed(
+            throw CaptureError.startFailed(
                 "Device UID for AudioObjectID \(deviceID) is unexpectedly empty."
             )
         }
@@ -602,7 +607,7 @@ private final class AudioOutputWarmer: @unchecked Sendable {
             standardFormatWithSampleRate: 48_000,
             channels: 2
         ) else {
-            throw LorreError.recordingStartFailed(
+            throw CaptureError.startFailed(
                 "Could not allocate AVAudioFormat for output warmer."
             )
         }
@@ -615,7 +620,7 @@ private final class AudioOutputWarmer: @unchecked Sendable {
         guard !isRunning else { return }
         let format = engine.mainMixerNode.outputFormat(forBus: 0)
         guard let buffer = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: 4800) else {
-            throw LorreError.recordingStartFailed(
+            throw CaptureError.startFailed(
                 "Could not allocate silent buffer for output warmer."
             )
         }
@@ -632,93 +637,6 @@ private final class AudioOutputWarmer: @unchecked Sendable {
         if player.isPlaying { player.stop() }
         if engine.isRunning { engine.stop() }
         isRunning = false
-    }
-}
-
-// MARK: - ProcessTapAudioWriter
-
-/// Writes incoming PCM buffers to a `.caf` file. Output format matches the
-/// previous SCStream-based system audio writer exactly:
-/// Float32, 48 kHz, 2-channel, non-interleaved (discovery notes §Buffer format).
-///
-/// Thread safety: `write(_:)` and `finish()` may be called from different
-/// queues (IO proc queue vs stop path). An `NSLock` guards the file write.
-@available(macOS 15.0, *)
-final class ProcessTapAudioWriter: @unchecked Sendable {
-    private let file: AVAudioFile
-    private let format: AVAudioFormat
-    private let lock = NSLock()
-    private var writeFailureMessage: String?
-    private var timelineStart: Date?
-    private var framesWritten: Int64 = 0
-
-    /// The tap delivers buffers only while a listed process is actually
-    /// producing audio. Gaps larger than this are filled with silence so the
-    /// stem stays aligned to the recording's wall-clock timeline; smaller
-    /// deviations are normal callback jitter and are left alone.
-    private let gapThresholdSeconds = 0.35
-
-    init(outputURL: URL, format: AVAudioFormat) throws {
-        self.file = try AVAudioFile(forWriting: outputURL, settings: format.settings)
-        self.format = format
-    }
-
-    /// Anchors the stem's timeline. Use the moment the recording started
-    /// (the mic capture start in mic+system mode), so all stems share t=0.
-    func setTimelineStart(_ date: Date) {
-        lock.withLock { timelineStart = date }
-    }
-
-    func write(_ buffer: AVAudioPCMBuffer) {
-        write(buffer, at: Date())
-    }
-
-    func write(_ buffer: AVAudioPCMBuffer, at callbackDate: Date) {
-        lock.withLock {
-            guard writeFailureMessage == nil else { return }
-            do {
-                if let timelineStart {
-                    // The buffer delivered at `callbackDate` covers the time
-                    // span just before it; everything missing in between was
-                    // a delivery gap (no process producing audio).
-                    let elapsed = callbackDate.timeIntervalSince(timelineStart)
-                    let expectedBefore = Int64((elapsed * format.sampleRate).rounded()) - Int64(buffer.frameLength)
-                    let gapFrames = expectedBefore - framesWritten
-                    if Double(gapFrames) / format.sampleRate > gapThresholdSeconds {
-                        try writeSilence(frames: gapFrames)
-                    }
-                }
-                try file.write(from: buffer)
-                framesWritten += Int64(buffer.frameLength)
-            } catch {
-                writeFailureMessage = error.localizedDescription
-            }
-        }
-    }
-
-    private func writeSilence(frames: Int64) throws {
-        var remaining = frames
-        while remaining > 0 {
-            let chunk = AVAudioFrameCount(min(remaining, 48_000))
-            guard let silent = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: chunk) else { return }
-            silent.frameLength = chunk
-            if let channels = silent.floatChannelData {
-                for channel in 0..<Int(format.channelCount) {
-                    channels[channel].update(repeating: 0, count: Int(chunk))
-                }
-            }
-            try file.write(from: silent)
-            framesWritten += Int64(chunk)
-            remaining -= Int64(chunk)
-        }
-    }
-
-    func failureMessage() -> String? {
-        lock.withLock { writeFailureMessage }
-    }
-
-    func finish() {
-        // AVAudioFile finalizes the CAF header on deinit.
     }
 }
 #endif

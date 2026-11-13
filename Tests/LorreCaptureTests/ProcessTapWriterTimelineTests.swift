@@ -1,7 +1,7 @@
 import AVFoundation
 import Foundation
 import XCTest
-@testable import Lorre
+@testable import LorreCapture
 
 /// The process tap only delivers buffers while a listed process is actually
 /// producing audio: a recording that starts in silence gets its first

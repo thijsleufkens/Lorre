@@ -22,6 +22,10 @@ public struct Conversation: Identifiable, Codable, Equatable, Sendable {
     public var importedAt: Date?
     public var createdAt: Date
     public var updatedAt: Date
+    /// How the conversation was recorded; nil for imported conversations.
+    public var captureSource: CaptureSource?
+    /// The last thing that went wrong with this conversation, in words for the user.
+    public var lastError: String?
 
     public init(
         id: UUID = UUID(),
@@ -33,7 +37,9 @@ public struct Conversation: Identifiable, Codable, Equatable, Sendable {
         calendarEventId: String? = nil,
         importedAt: Date? = nil,
         createdAt: Date = Date(),
-        updatedAt: Date = Date()
+        updatedAt: Date = Date(),
+        captureSource: CaptureSource? = nil,
+        lastError: String? = nil
     ) {
         self.id = id
         self.title = title
@@ -45,5 +51,7 @@ public struct Conversation: Identifiable, Codable, Equatable, Sendable {
         self.importedAt = importedAt
         self.createdAt = createdAt
         self.updatedAt = updatedAt
+        self.captureSource = captureSource
+        self.lastError = lastError
     }
 }

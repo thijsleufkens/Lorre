@@ -92,6 +92,44 @@ final class ConversationStoreTests: XCTestCase {
         XCTAssertEqual(versions, 2)
     }
 
+    func testConversationsInStatesAreOldestFirst() throws {
+        var newer = makeConversation(title: "Newer", startedAt: Date(timeIntervalSince1970: 1_800_100_000))
+        newer.state = .processing
+        var older = makeConversation(title: "Older", startedAt: Date(timeIntervalSince1970: 1_800_000_000))
+        older.state = .processing
+        var other = makeConversation(title: "Other")
+        other.state = .approved
+        for conversation in [newer, older, other] { try store.save(conversation) }
+
+        XCTAssertEqual(try store.conversations(inStates: [.processing]).map(\.title), ["Older", "Newer"])
+        XCTAssertEqual(try store.conversations(inStates: [.processing, .approved]).count, 3)
+        XCTAssertEqual(try store.conversations(inStates: []).count, 0)
+    }
+
+    func testSetStateReplacesTheErrorAndTouchesUpdatedAt() throws {
+        var conversation = makeConversation()
+        conversation.lastError = "old problem"
+        try store.save(conversation)
+        let now = Date(timeIntervalSince1970: 1_800_500_000)
+
+        let updated = try store.setState(.proposed, lastError: nil, for: conversation.id, now: now)
+        XCTAssertEqual(updated?.state, .proposed)
+        XCTAssertNil(updated?.lastError)
+        XCTAssertEqual(updated?.updatedAt, now)
+        XCTAssertEqual(try store.conversation(id: conversation.id), updated)
+
+        XCTAssertNil(try store.setState(.proposed, lastError: nil, for: UUID()))
+    }
+
+    func testRecentConversationsAreLimited() throws {
+        for index in 0..<4 {
+            try store.save(makeConversation(
+                title: "C\(index)", startedAt: Date(timeIntervalSince1970: 1_800_000_000 + Double(index))
+            ))
+        }
+        XCTAssertEqual(try store.recentConversations(limit: 2).map(\.conversation.title), ["C3", "C2"])
+    }
+
     func testTracksRoundTrip() throws {
         let conversation = makeConversation()
         try store.save(conversation)

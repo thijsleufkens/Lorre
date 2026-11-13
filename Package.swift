@@ -23,10 +23,15 @@ let package = Package(
                 .product(name: "GRDB", package: "GRDB.swift")
             ]
         ),
+        .target(
+            name: "LorreCapture",
+            dependencies: ["LorreCore"]
+        ),
         .executableTarget(
             name: "Lorre",
             dependencies: [
                 "LorreCore",
+                "LorreCapture",
                 .product(name: "FluidAudio", package: "FluidAudio"),
                 .product(name: "ArgumentParser", package: "swift-argument-parser")
             ]
@@ -37,6 +42,10 @@ let package = Package(
             resources: [
                 .copy("Fixtures")
             ]
+        ),
+        .testTarget(
+            name: "LorreCaptureTests",
+            dependencies: ["LorreCapture"]
         ),
         .testTarget(
             name: "LorreCoreTests",
