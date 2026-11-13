@@ -17,6 +17,14 @@ enum Schema {
                 ALTER TABLE conversation ADD COLUMN lastError TEXT;
                 """)
         }
+        migrator.registerMigration("v3") { db in
+            try db.execute(sql: """
+                CREATE TABLE setting (
+                  key TEXT PRIMARY KEY NOT NULL,
+                  value TEXT NOT NULL
+                );
+                """)
+        }
         return migrator
     }
 
