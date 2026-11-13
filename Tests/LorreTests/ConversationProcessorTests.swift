@@ -141,6 +141,37 @@ final class ConversationProcessorTests: XCTestCase {
         XCTAssertFalse(files(in: conversation).contains("mix.partial.caf"))
     }
 
+    /// An imported conversation has its audio in the old store. Processing it again must read
+    /// from there and write only into the conversation's own folder.
+    func testImportedConversationLeavesTheOldStoreUntouched() async throws {
+        let conversation = Conversation(
+            title: "Imported", state: .proposed, startedAt: Date(timeIntervalSince1970: 1_800_000_000),
+            importedAt: Date(timeIntervalSince1970: 1_800_000_500)
+        )
+        try store.save(conversation)
+        let legacy = paths.legacySessions.appendingPathComponent(conversation.id.uuidString, isDirectory: true)
+        try FileManager.default.createDirectory(at: legacy, withIntermediateDirectories: true)
+        for name in ["microphone.caf", "system-audio.caf"] {
+            try writeTone(legacy.appendingPathComponent(name), seconds: 2)
+        }
+        try store.saveTracks([
+            Track(conversationId: conversation.id, kind: .microphone, relativePath: "sessions/\(conversation.id.uuidString)/microphone.caf"),
+            Track(conversationId: conversation.id, kind: .system, relativePath: "sessions/\(conversation.id.uuidString)/system-audio.caf"),
+        ])
+
+        _ = try await processor().process(conversation.id, options: .init())
+
+        XCTAssertEqual(
+            Set(try FileManager.default.contentsOfDirectory(atPath: legacy.path)),
+            ["microphone.caf", "system-audio.caf"]
+        )
+        XCTAssertEqual(files(in: conversation), ["mix.caf", "transcript.md"])
+        XCTAssertEqual(
+            try store.tracks(conversationId: conversation.id).first { $0.kind == .mix }?.relativePath,
+            "conversations/\(conversation.id.uuidString)/mix.caf"
+        )
+    }
+
     func testNoAudioIsAnErrorNotACrash() async throws {
         let conversation = try makeConversation()
         let folder = paths.conversationFolder(conversation.id)

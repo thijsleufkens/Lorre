@@ -110,6 +110,7 @@ struct RecorderConsoleView: View {
 private struct RecorderSetupView: View {
     @ObservedObject var viewModel: AppViewModel
     @Environment(\.openSettings) private var openSettings
+    @Environment(\.recorderModel) private var recorder
 
     var body: some View {
         VStack(alignment: .leading, spacing: DS.Space.x4) {
@@ -122,40 +123,39 @@ private struct RecorderSetupView: View {
                     .foregroundStyle(DS.ColorToken.fgPrimary)
             }
 
-            Button {
-                viewModel.startRecordingTapped()
-            } label: {
-                HStack(spacing: 8) {
-                    Circle()
-                        .fill(DS.ColorToken.accentLive)
-                        .frame(width: 10, height: 10)
-                    Text("Start recording")
-                        .fontWeight(.semibold)
+            if let recorder {
+                // Recording runs from the menu bar: it writes straight into the conversation
+                // folder, so a crash can no longer lose it.
+                Button {
+                    Task { recorder.isRecording ? await recorder.stop() : await recorder.start() }
+                } label: {
+                    HStack(spacing: 8) {
+                        Circle()
+                            .fill(DS.ColorToken.accentLive)
+                            .frame(width: 10, height: 10)
+                        Text(recorder.isRecording ? "Stop recording" : "Start recording")
+                            .fontWeight(.semibold)
+                    }
                 }
-            }
-            .buttonStyle(.borderedProminent)
-            .tint(DS.ColorToken.accentPrimary)
-            .controlSize(.large)
-            .disabled(!canStart)
+                .buttonStyle(.borderedProminent)
+                .tint(recorder.isRecording ? DS.ColorToken.accentLive : DS.ColorToken.accentPrimary)
+                .controlSize(.large)
+                .disabled(recorder.phase == .starting || recorder.phase == .stopping)
 
-            VStack(alignment: .leading, spacing: 4) {
-                Text(sourceLine)
+                Text("Recording now lives in the menu bar. New conversations appear there once they are transcribed; this window shows your earlier sessions.")
                     .font(DS.FontStyle.helper)
                     .foregroundStyle(DS.ColorToken.fgSecondary)
-                HStack(spacing: 4) {
-                    Text(preferencesLine)
+                    .fixedSize(horizontal: false, vertical: true)
+                if let message = recorder.message {
+                    Text(message)
                         .font(DS.FontStyle.helper)
-                        .foregroundStyle(DS.ColorToken.fgSecondary)
-                    Button {
-                        openSettings()
-                    } label: {
-                        Image(systemName: "gearshape")
-                            .font(.system(size: 11))
-                            .foregroundStyle(DS.ColorToken.fgSecondary)
-                    }
-                    .buttonStyle(.plain)
-                    .help("Open Settings")
+                        .foregroundStyle(DS.ColorToken.statusError)
+                        .fixedSize(horizontal: false, vertical: true)
                 }
+            } else {
+                Text("Recording is unavailable because Lorre could not open its database.")
+                    .font(DS.FontStyle.helper)
+                    .foregroundStyle(DS.ColorToken.statusError)
             }
 
             Spacer()
@@ -166,24 +166,6 @@ private struct RecorderSetupView: View {
 
     private var heroTitle: String {
         "New recording"
-    }
-
-    private var canStart: Bool {
-        !viewModel.isStartingRecording && !viewModel.isRecording && !viewModel.isStoppingRecording
-    }
-
-    private var sourceLine: String {
-        switch viewModel.selectedRecordingSource {
-        case .microphone: return "Microphone · 48 kHz"
-        case .microphoneAndSystemAudio: return "Microphone + system audio · 48 kHz"
-        case .systemAudio: return "System audio · 48 kHz"
-        }
-    }
-
-    private var preferencesLine: String {
-        let live = viewModel.isLiveTranscriptionEnabled ? "Live preview on" : "Live preview off"
-        let retention = viewModel.isDeleteAudioAfterTranscriptionEnabled ? "Delete after transcript" : "Keep audio"
-        return "\(live) · \(retention)"
     }
 }
 

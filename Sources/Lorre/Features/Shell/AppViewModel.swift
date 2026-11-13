@@ -79,6 +79,9 @@ final class AppViewModel: ObservableObject {
     @Published private(set) var isKnownSpeakerOperationInFlight = false
 
     private let dependencies: AppDependencies
+    /// When set, recordings started from here (call prompt) go through the menu-bar recorder,
+    /// which writes straight into the conversation folder and survives a crash.
+    var externalRecorderStart: ((RecordingSource) -> Void)?
     private var started = false
     private var recordingClockTask: Task<Void, Never>?
     private var liveMeterTask: Task<Void, Never>?
@@ -2719,7 +2722,11 @@ final class AppViewModel: ObservableObject {
         Task { [dependencies] in
             await dependencies.metrics.log(name: "record_start_reason", attributes: ["reason": startReason])
         }
-        startRecordingTapped()
+        if let externalRecorderStart {
+            externalRecorderStart(source)
+        } else {
+            startRecordingTapped()
+        }
     }
 
     private func startCallWatcherIfNeeded() {

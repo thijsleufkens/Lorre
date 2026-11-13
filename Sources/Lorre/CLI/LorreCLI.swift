@@ -5,7 +5,8 @@ struct LorreCLI: AsyncParsableCommand {
         commandName: "Lorre",
         abstract: "Lorre local transcription CLI.",
         subcommands: [
-            TranscribeCommand.self, ListCommand.self, ImportLegacyCommand.self, CaptureSelfTestCommand.self,
+            TranscribeCommand.self, ListCommand.self, ShowCommand.self, ProcessCommand.self,
+            ImportLegacyCommand.self, CaptureSelfTestCommand.self,
         ]
     )
 }

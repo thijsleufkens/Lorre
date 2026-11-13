@@ -43,12 +43,10 @@ struct ConversationProcessor: Sendable {
         folder(for: conversationId, tracks: tracks, paths: paths).appendingPathComponent(transcriptFileName)
     }
 
-    /// Recorded conversations live in their own folder; imported ones keep their audio in the old store.
+    /// Everything processing produces goes into the conversation's own folder. Imported
+    /// conversations keep their audio in the old store, which is read-only for new code.
     private static func folder(for conversationId: UUID, tracks: [Track], paths: LorrePaths) -> URL {
-        if let first = tracks.first {
-            return paths.root.appendingPathComponent(first.relativePath).deletingLastPathComponent()
-        }
-        return paths.conversationFolder(conversationId)
+        paths.conversationFolder(conversationId)
     }
 
     /// Processes the conversation and returns it in its new state. Errors are recorded on the
@@ -142,6 +140,7 @@ struct ConversationProcessor: Sendable {
 
         let renderer = MarkdownExportService()
         let folder = Self.folder(for: conversation.id, tracks: tracks, paths: paths)
+        try? FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
         try? Data(renderer.render(session: manifest, transcript: transcript).utf8)
             .write(to: folder.appendingPathComponent(Self.transcriptFileName), options: .atomic)
 
@@ -169,7 +168,8 @@ struct ConversationProcessor: Sendable {
         let system = url(.system)
 
         if let microphone, let system {
-            let folder = microphone.deletingLastPathComponent()
+            let folder = Self.folder(for: conversation.id, tracks: tracks, paths: paths)
+            try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
             let destination = folder.appendingPathComponent(TrackKind.mix.fileName)
             // Written next to the tracks under a temporary name first, so a failed mix leaves no
             // half-written file that would later be mistaken for the real one.
@@ -189,12 +189,11 @@ struct ConversationProcessor: Sendable {
                 guard let best = candidates.max(by: { $0.1 < $1.1 }), best.1 > 0 else { throw error }
                 return best.0
             }
-            if tracks.first(where: { $0.kind == .mix }) == nil {
-                let relative = tracks.first { $0.kind == .microphone }.map {
-                    ($0.relativePath as NSString).deletingLastPathComponent + "/" + TrackKind.mix.fileName
-                } ?? paths.relativeTrackPath(conversation.id, fileName: TrackKind.mix.fileName)
-                try store.saveTracks([Track(conversationId: conversation.id, kind: .mix, relativePath: relative)])
-            }
+            try store.saveTracks([Track(
+                conversationId: conversation.id,
+                kind: .mix,
+                relativePath: paths.relativeTrackPath(conversation.id, fileName: TrackKind.mix.fileName)
+            )])
             return destination
         }
         if let only = microphone ?? system { return only }

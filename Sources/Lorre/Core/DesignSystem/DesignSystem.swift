@@ -44,6 +44,11 @@ enum DS {
         static let statusIdle = fgTertiary
     }
 
+    enum Layout {
+        static let menuBarPanelWidth: CGFloat = 320
+        static let levelLabelWidth: CGFloat = 44
+    }
+
     enum Radius {
         static let sm: CGFloat = 8
         static let md: CGFloat = 10
