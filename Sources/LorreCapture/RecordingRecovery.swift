@@ -111,7 +111,7 @@ public struct RecordingRecovery: Sendable {
             .max()
     }
 
-    static func trackDuration(_ url: URL) -> Double? {
+    public static func trackDuration(_ url: URL) -> Double? {
         guard RecordingCoordinator.fileSize(url) > 0, let file = try? AVAudioFile(forReading: url) else { return nil }
         let sampleRate = file.fileFormat.sampleRate
         guard sampleRate > 0, file.length > 0 else { return nil }

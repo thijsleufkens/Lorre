@@ -91,32 +91,11 @@ public struct LegacySessionImporter: Sendable {
         var transcriptFileName: String?
     }
 
-    private struct LegacyTranscript: Decodable {
-        struct Speaker: Decodable {
-            var id: String
-            var displayName: String?
-        }
-        struct Segment: Decodable {
-            var id: UUID?
-            var startMs: Int
-            var endMs: Int
-            var text: String
-            var speakerId: String?
-            var confidence: Double?
-            var isEdited: Bool?
-        }
-        var languageHint: String?
-        var sourceEngine: String?
-        var segments: [Segment]?
-        var speakers: [Speaker]?
-        var createdAt: Date?
-    }
-
     private struct LoadedSession {
         var id: UUID
         var folderName: String
         var manifest: LegacyManifest
-        var transcript: LegacyTranscript?
+        var transcript: LegacyTranscriptMapper.Transcript?
         var trackFiles: [(TrackKind, String)]
     }
 
@@ -144,11 +123,11 @@ public struct LegacySessionImporter: Sendable {
             throw ImportError(reason: "no usable session id")
         }
 
-        var transcript: LegacyTranscript?
+        var transcript: LegacyTranscriptMapper.Transcript?
         let transcriptURL = folder.appendingPathComponent(manifest.transcriptFileName ?? "transcript.json")
         if let data = try? Data(contentsOf: transcriptURL) {
             do {
-                transcript = try Self.decoder().decode(LegacyTranscript.self, from: data)
+                transcript = try LegacyTranscriptMapper.decode(data)
             } catch {
                 throw ImportError(reason: "transcript.json could not be read")
             }
@@ -202,49 +181,11 @@ public struct LegacySessionImporter: Sendable {
             ).insert(db)
         }
 
-        guard let transcript = session.transcript, !segments.isEmpty else { return true }
-
-        var participantByLabel: [String: UUID] = [:]
-        func participant(for label: String, name: String?) throws -> UUID {
-            if let existing = participantByLabel[label] { return existing }
-            let participant = Participant(
-                conversationId: session.id,
-                name: name ?? label,
-                sourceLabel: label
-            )
-            try participant.insert(db)
-            participantByLabel[label] = participant.id
-            return participant.id
-        }
-        for speaker in transcript.speakers ?? [] {
-            _ = try participant(for: speaker.id, name: speaker.displayName)
-        }
-
-        let version = TranscriptVersion(
-            conversationId: session.id,
-            engine: transcript.sourceEngine ?? "unknown",
-            languageHint: transcript.languageHint,
-            createdAt: transcript.createdAt ?? createdAt
-        )
-        var seenSegmentIds = Set<UUID>()
-        let newSegments = try segments.map { legacy -> Segment in
-            // Segment ids must be unique across the database; a duplicated legacy id gets a fresh one.
-            var id = legacy.id ?? UUID()
-            let isTaken = try seenSegmentIds.contains(id) || Segment.exists(db, key: id.uuidString)
-            if isTaken { id = UUID() }
-            seenSegmentIds.insert(id)
-            return Segment(
-                id: id,
-                transcriptVersionId: version.id,
-                participantId: try legacy.speakerId.map { try participant(for: $0, name: nil) },
-                startMs: legacy.startMs,
-                endMs: legacy.endMs,
-                text: legacy.text,
-                confidence: legacy.confidence,
-                isEdited: legacy.isEdited ?? false
+        if let transcript = session.transcript {
+            try LegacyTranscriptMapper.insert(
+                transcript, conversationId: session.id, defaultDate: createdAt, into: db
             )
         }
-        try ConversationStore.insertTranscript(db, version: version, segments: newSegments)
         return true
     }
 }
