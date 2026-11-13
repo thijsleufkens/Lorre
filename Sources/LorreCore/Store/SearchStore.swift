@@ -8,6 +8,14 @@ public struct SearchHit: Equatable, Sendable {
     public var startMs: Int
     /// The matching text with the matched words between `[` and `]`.
     public var snippet: String
+
+    public init(conversationId: UUID, conversationTitle: String, segmentId: UUID, startMs: Int, snippet: String) {
+        self.conversationId = conversationId
+        self.conversationTitle = conversationTitle
+        self.segmentId = segmentId
+        self.startMs = startMs
+        self.snippet = snippet
+    }
 }
 
 /// Full-text search over the current transcripts.

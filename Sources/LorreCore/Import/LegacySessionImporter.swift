@@ -5,11 +5,22 @@ public struct LegacyImportReport: Equatable, Sendable {
     public struct Skipped: Equatable, Sendable {
         public var folder: String
         public var reason: String
+
+        public init(folder: String, reason: String) {
+            self.folder = folder
+            self.reason = reason
+        }
     }
 
-    public var imported: [UUID] = []
-    public var alreadyPresent: [UUID] = []
-    public var skipped: [Skipped] = []
+    public var imported: [UUID]
+    public var alreadyPresent: [UUID]
+    public var skipped: [Skipped]
+
+    public init(imported: [UUID] = [], alreadyPresent: [UUID] = [], skipped: [Skipped] = []) {
+        self.imported = imported
+        self.alreadyPresent = alreadyPresent
+        self.skipped = skipped
+    }
 }
 
 /// Copies the sessions of the pre-rebuild file store into the database.
