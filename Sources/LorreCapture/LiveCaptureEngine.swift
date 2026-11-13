@@ -22,9 +22,26 @@ public actor LiveCaptureEngine: CaptureEngine {
         }
 
         func reset() {
-            lock.withLock { values = [:] }
+            lock.withLock {
+                values = [:]
+                peaks = [:]
+            }
+        }
+
+        private var peaks: [TrackKind: Float] = [:]
+
+        /// Remembers the loudest sample seen on a track since the recording started.
+        func notePeak(_ peak: Float, for kind: TrackKind) {
+            lock.withLock { peaks[kind] = max(peaks[kind] ?? 0, peak) }
+        }
+
+        func peak(for kind: TrackKind) -> Float? {
+            lock.withLock { peaks[kind] }
         }
     }
+
+    /// A working microphone never delivers exact zeros for this long; even a quiet room has noise.
+    static let silenceVerdictDelay: TimeInterval = 3
 
     private let logger = Logger(subsystem: "lorre", category: "Capture")
     private let meters = MeterBox()
@@ -87,17 +104,25 @@ public actor LiveCaptureEngine: CaptureEngine {
         let duration = startedAt.map { max(endedAt.timeIntervalSince($0), 0) } ?? 0
         let microphoneWriter = self.microphoneWriter
         let systemCapture = self.systemCapture
+        let silent = await silentTracks()
 
         tearDown()
 
         var failures: [TrackKind: String] = [:]
         if let message = microphoneWriter?.failureMessage() { failures[.microphone] = message }
         if let message = systemCapture?.writeFailure() { failures[.system] = message }
-        return CaptureStop(endedAt: endedAt, durationSeconds: duration, trackFailures: failures)
+        return CaptureStop(endedAt: endedAt, durationSeconds: duration, trackFailures: failures, silentTracks: silent)
     }
 
     public func levels() async -> [TrackKind: Double] {
         meters.snapshot()
+    }
+
+    public func silentTracks() async -> Set<TrackKind> {
+        guard let startedAt, let source, source.includesMicrophone,
+              Date().timeIntervalSince(startedAt) >= Self.silenceVerdictDelay,
+              (meters.peak(for: .microphone) ?? 0) == 0 else { return [] }
+        return [.microphone]
     }
 
     // MARK: Microphone
@@ -197,6 +222,7 @@ public actor LiveCaptureEngine: CaptureEngine {
             }
             writer.write(buffer)
             meters.set(buffer.lorre_meterLevel(), for: .microphone)
+            meters.notePeak(buffer.lorre_peak(), for: .microphone)
         }
     }
 

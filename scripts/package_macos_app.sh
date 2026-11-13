@@ -132,7 +132,7 @@ else
   echo "Signing with identity: $SIGN_IDENTITY"
 fi
 codesign --force --deep --sign "$SIGN_IDENTITY" --entitlements "$ENTITLEMENTS_PATH" "$APP_BUNDLE"
-codesign -d -r- "$APP_BUNDLE" 2>&1 | grep '^designated' || true
+codesign -d -r- "$APP_BUNDLE" 2>&1 | grep 'designated' || true
 
 echo "Created: $APP_BUNDLE"
 echo "Binary:  $MACOS_DIR/$APP_NAME"

@@ -91,7 +91,11 @@ public actor RecordingCoordinator {
         RecordingLock.remove(in: folder)
 
         let kinds = conversation.captureSource?.trackKinds ?? []
-        let hasAudio = kinds.contains { Self.fileSize(folder.appendingPathComponent($0.fileName)) > 0 }
+        // A track of pure digital silence is a file with nothing in it worth transcribing.
+        let hasAudio = kinds.contains { kind in
+            !result.silentTracks.contains(kind) && Self.fileHasAudio(folder.appendingPathComponent(kind.fileName))
+        }
+        let microphoneWasSilent = result.silentTracks.contains(.microphone)
         let failures = result.trackFailures
             .sorted { $0.key.rawValue < $1.key.rawValue }
             .map { "\($0.key.rawValue): \($0.value)" }
@@ -100,14 +104,22 @@ public actor RecordingCoordinator {
         conversation.updatedAt = now()
         if hasAudio {
             conversation.state = .processing
-            conversation.lastError = failures.isEmpty
-                ? nil
-                : "Part of the recording could not be written (\(failures.joined(separator: "; ")))."
+            if !failures.isEmpty {
+                conversation.lastError = "Part of the recording could not be written (\(failures.joined(separator: "; ")))."
+            } else if microphoneWasSilent {
+                conversation.lastError = "Your own voice was not recorded. " + CaptureAdvice.silentMicrophone
+            } else {
+                conversation.lastError = nil
+            }
         } else {
             conversation.state = .interrupted
-            conversation.lastError = failures.isEmpty
-                ? "No audio was captured."
-                : "No audio was captured (\(failures.joined(separator: "; ")))."
+            if microphoneWasSilent {
+                conversation.lastError = CaptureAdvice.silentMicrophone
+            } else if failures.isEmpty {
+                conversation.lastError = "No audio was captured."
+            } else {
+                conversation.lastError = "No audio was captured (\(failures.joined(separator: "; ")))."
+            }
         }
         try store.save(conversation)
         return conversation
@@ -115,6 +127,15 @@ public actor RecordingCoordinator {
 
     public func levels() async -> [TrackKind: Double] {
         await engine.levels()
+    }
+
+    public func silentTracks() async -> Set<TrackKind> {
+        await engine.silentTracks()
+    }
+
+    /// More than a bare file header. A system-audio track stays this small when nothing played.
+    static func fileHasAudio(_ url: URL) -> Bool {
+        fileSize(url) > 8192
     }
 
     static func fileSize(_ url: URL) -> Int {

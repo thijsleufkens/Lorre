@@ -204,8 +204,14 @@ final class RecorderModel {
         levelTask = Task { [weak self, coordinator] in
             while !Task.isCancelled {
                 let levels = await coordinator.levels()
+                let silent = await coordinator.silentTracks()
                 guard let self, !Task.isCancelled else { return }
                 self.levels = levels
+                if silent.contains(.microphone), self.message == nil {
+                    // Say it while the conversation is still going on, not after it is over.
+                    self.message = CaptureAdvice.silentMicrophone
+                    self.notify("No sound from the microphone", CaptureAdvice.silentMicrophone)
+                }
                 try? await Task.sleep(for: .milliseconds(200))
             }
         }

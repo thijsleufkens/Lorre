@@ -388,6 +388,17 @@ public extension AVAudioPCMBuffer {
         return mono
     }
 
+    /// The largest absolute sample value in the buffer's first channel (0 for non-float buffers).
+    func lorre_peak() -> Float {
+        guard let channels = floatChannelData, frameLength > 0 else { return 0 }
+        let count = format.isInterleaved ? Int(frameLength) * Int(format.channelCount) : Int(frameLength)
+        var peak: Float = 0
+        for sample in UnsafeBufferPointer(start: channels[0], count: count) {
+            peak = max(peak, abs(sample))
+        }
+        return peak
+    }
+
     func lorre_deepCopy() -> AVAudioPCMBuffer? {
         guard let copy = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: frameLength) else {
             return nil

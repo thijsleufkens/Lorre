@@ -14,7 +14,8 @@ private actor StubCaptureEngine: CaptureEngine {
     func start(source: CaptureSource, into folder: URL) async throws -> CaptureStart {
         if let startError { throw startError }
         for kind in source.trackKinds {
-            try Data(writesAudio ? "audio".utf8 : "".utf8).write(to: folder.appendingPathComponent(kind.fileName))
+            let contents = writesAudio ? Data(repeating: 1, count: 16_384) : Data()
+            try contents.write(to: folder.appendingPathComponent(kind.fileName))
         }
         return CaptureStart(startedAt: Date(timeIntervalSince1970: 1_800_000_000))
     }
@@ -24,6 +25,10 @@ private actor StubCaptureEngine: CaptureEngine {
     }
 
     func levels() async -> [TrackKind: Double] { [.microphone: 0.5] }
+
+    var silent: Set<TrackKind> = []
+    func set(silent: Set<TrackKind>) { self.silent = silent }
+    func silentTracks() async -> Set<TrackKind> { silent }
 }
 
 private final class NotificationLog: @unchecked Sendable {
@@ -138,6 +143,16 @@ final class RecorderModelTests: XCTestCase {
         await queue.waitUntilIdle()
         try await Task.sleep(for: .milliseconds(100))
         XCTAssertEqual(notifications.titles, ["Your conversation is ready"])
+    }
+
+    func testSilentMicrophoneIsReportedWhileRecording() async throws {
+        await engine.set(silent: [.microphone])
+        let (model, _) = makeModel()
+        await model.start()
+        try await Task.sleep(for: .milliseconds(400))
+        XCTAssertEqual(model.message, CaptureAdvice.silentMicrophone)
+        XCTAssertEqual(notifications.titles, ["No sound from the microphone"])
+        await model.stop()
     }
 
     func testSourceIsRemembered() {

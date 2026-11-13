@@ -107,6 +107,33 @@ final class RecordingCoordinatorTests: XCTestCase {
         XCTAssertTrue(FileManager.default.fileExists(atPath: folder.appendingPathComponent("system-audio.caf").path))
     }
 
+    /// What happens without microphone permission: macOS delivers zeros, the file grows, and
+    /// nothing is in it.
+    func testSilentMicrophoneOnlyIsNotSentForTranscription() async throws {
+        await engine.set(silent: [.microphone])
+        _ = try await coordinator.start(source: .microphone)
+        let stopped = try await coordinator.stop()
+        XCTAssertEqual(stopped.state, .interrupted)
+        XCTAssertEqual(stopped.lastError, CaptureAdvice.silentMicrophone)
+        XCTAssertGreaterThan(size(stopped.id, .microphone), 0, "the file is kept all the same")
+    }
+
+    func testSilentMicrophoneWithSystemAudioIsProcessedWithAWarning() async throws {
+        await engine.set(silent: [.microphone])
+        _ = try await coordinator.start(source: .microphoneAndSystemAudio)
+        let stopped = try await coordinator.stop()
+        XCTAssertEqual(stopped.state, .processing)
+        XCTAssertEqual(stopped.lastError?.hasPrefix("Your own voice was not recorded."), true)
+    }
+
+    func testSystemTrackWithOnlyAHeaderDoesNotCountAsAudio() async throws {
+        await engine.set(silent: [.microphone])
+        await engine.set(seconds: [.microphone: 1, .system: 0])
+        _ = try await coordinator.start(source: .microphoneAndSystemAudio)
+        let stopped = try await coordinator.stop()
+        XCTAssertEqual(stopped.state, .interrupted)
+    }
+
     func testSecondStartIsRefusedAndDoesNotDisturbTheFirst() async throws {
         let first = try await coordinator.start(source: .microphone)
         do {

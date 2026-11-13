@@ -14,11 +14,20 @@ public struct CaptureStop: Equatable, Sendable {
     public var durationSeconds: Double
     /// Tracks whose writer reported an error. Their files are kept as far as they got.
     public var trackFailures: [TrackKind: String]
+    /// Tracks that were written but contain nothing except digital silence. For the microphone
+    /// this means macOS is withholding the input, almost always a missing permission.
+    public var silentTracks: Set<TrackKind>
 
-    public init(endedAt: Date, durationSeconds: Double, trackFailures: [TrackKind: String] = [:]) {
+    public init(
+        endedAt: Date,
+        durationSeconds: Double,
+        trackFailures: [TrackKind: String] = [:],
+        silentTracks: Set<TrackKind> = []
+    ) {
         self.endedAt = endedAt
         self.durationSeconds = durationSeconds
         self.trackFailures = trackFailures
+        self.silentTracks = silentTracks
     }
 }
 
@@ -32,4 +41,16 @@ public protocol CaptureEngine: Sendable {
     func stop() async -> CaptureStop
     /// Current input level per track, 0...1.
     func levels() async -> [TrackKind: Double]
+    /// Tracks that have delivered only digital silence for long enough to be sure something is wrong.
+    func silentTracks() async -> Set<TrackKind>
+}
+
+public extension CaptureEngine {
+    func silentTracks() async -> Set<TrackKind> { [] }
+}
+
+public enum CaptureAdvice {
+    /// What to tell the user when the microphone delivers nothing but zeros.
+    public static let silentMicrophone =
+        "Lorre is not receiving any sound from the microphone. Allow Lorre under System Settings → Privacy & Security → Microphone (switch it off and on again if it is already allowed), then start a new recording."
 }

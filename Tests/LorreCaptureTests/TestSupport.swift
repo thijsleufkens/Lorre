@@ -32,6 +32,9 @@ actor FakeCaptureEngine: CaptureEngine {
     func set(startError: CaptureError?) { self.startError = startError }
     func set(trackFailures: [TrackKind: String]) { self.trackFailures = trackFailures }
     func set(seconds: [TrackKind: Double?]) { self.seconds = seconds }
+    var silent: Set<TrackKind> = []
+    func set(silent: Set<TrackKind>) { self.silent = silent }
+    func silentTracks() async -> Set<TrackKind> { silent }
 
     func start(source: CaptureSource, into folder: URL) async throws -> CaptureStart {
         startCount += 1
@@ -53,7 +56,8 @@ actor FakeCaptureEngine: CaptureEngine {
         return CaptureStop(
             endedAt: Date(timeIntervalSince1970: 1_800_000_000 + duration),
             durationSeconds: duration,
-            trackFailures: trackFailures
+            trackFailures: trackFailures,
+            silentTracks: silent
         )
     }
 

@@ -1,3 +1,4 @@
+import LorreCapture
 import LorreCore
 import XCTest
 @testable import Lorre
@@ -50,6 +51,17 @@ final class ListCommandTests: XCTestCase {
         XCTAssertEqual(rows[0]["segmentCount"] as? Int, 382)
         XCTAssertEqual(rows[0]["proposedOutcomes"] as? Int, 3)
         XCTAssertEqual(rows[0]["approvedOutcomes"] as? Int, 1)
+    }
+
+    func testRecoveryReport() {
+        var report = RecoveryReport()
+        let id = UUID(uuidString: "11111111-1111-1111-1111-111111111111")!
+        report.recovered = [id]
+        XCTAssertEqual(
+            RecoverCommand.render(report),
+            "Recovered 1 interrupted recording(s), 0 waiting to be transcribed, 0 being recorded now\n"
+                + "  recovered 11111111-1111-1111-1111-111111111111"
+        )
     }
 
     func testImportReportListsSkippedFolders() {
