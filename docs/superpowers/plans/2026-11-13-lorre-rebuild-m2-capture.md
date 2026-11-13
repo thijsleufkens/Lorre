@@ -64,8 +64,8 @@
 
 ## Task 1: `LorreCapture` module with the moved files
 
-- [ ] Add the targets to `Package.swift`: `LorreCapture` depends on `LorreCore`; `LorreCaptureTests` depends on `LorreCapture`; add `"LorreCapture"` to the `Lorre` target.
-- [ ] `git mv` the two files. Create `CaptureError`:
+- [x] Add the targets to `Package.swift`: `LorreCapture` depends on `LorreCore`; `LorreCaptureTests` depends on `LorreCapture`; add `"LorreCapture"` to the `Lorre` target.
+- [x] `git mv` the two files. Create `CaptureError`:
 
 ```swift
 public enum CaptureError: Error, Equatable, Sendable, LocalizedError {
@@ -77,28 +77,28 @@ public enum CaptureError: Error, Equatable, Sendable, LocalizedError {
 ```
 
   Replace `LorreError.recordingStartFailed` / `.recordingStopFailed` in the moved files with it.
-- [ ] Make public exactly what the old recorder service uses (the capture class, its start/stop/`writeFailure`, the writer, `RecorderAudioUtilities.mixToCanonicalFile`, the `AVAudioPCMBuffer` helpers). Nothing else.
-- [ ] In `AVFoundationRecorderService`, `import LorreCapture` and translate `CaptureError` back to the matching `LorreError` case at the call sites, so the old UI's error messages are unchanged.
-- [ ] `git mv` `RecorderAudioMixTests.swift` and `ProcessTapWriterTimelineTests.swift` to `Tests/LorreCaptureTests/` and adjust imports.
-- [ ] Full test run: the total count equals the count after milestone 1 (159). Build the app, make one mic+system recording with the **old** Start button and confirm both stems contain audio: this is a pure move and must not change behaviour.
-- [ ] Commit: `refactor: move Process Tap capture and audio utilities into LorreCapture`.
+- [x] Make public exactly what the old recorder service uses (the capture class, its start/stop/`writeFailure`, the writer, `RecorderAudioUtilities.mixToCanonicalFile`, the `AVAudioPCMBuffer` helpers). Nothing else.
+- [x] In `AVFoundationRecorderService`, `import LorreCapture` and translate `CaptureError` back to the matching `LorreError` case at the call sites, so the old UI's error messages are unchanged.
+- [x] `git mv` `RecorderAudioMixTests.swift` and `ProcessTapWriterTimelineTests.swift` to `Tests/LorreCaptureTests/` and adjust imports.
+- [x] Full test run: the total count equals the count after milestone 1 (159). Build the app, make one mic+system recording with the **old** Start button and confirm both stems contain audio: this is a pure move and must not change behaviour.
+- [x] Commit: `refactor: move Process Tap capture and audio utilities into LorreCapture`.
 
 ## Task 2: Timeline writer for every track
 
-- [ ] Rename `ProcessTapAudioWriter` to `TimelineAudioWriter` (keep a `typealias` for the old name until the old recorder is removed). Its behaviour is unchanged: t=0 is the anchor date, delivery gaps above 0.35 s are padded with silence.
-- [ ] Add tests to `TimelineWriterTests` (the moved file): a writer anchored at T receiving its first buffer at T+2 s starts with 2 s of silence; buffers arriving back to back add no padding; after `close()` the file's frame count equals padded plus written frames; a write after a simulated failure reports the failure through `failureMessage()` and does not crash.
-- [ ] Add `flush()`: `AVAudioFile` offers no explicit sync, so the writer keeps a `FileHandle` on the same URL and calls `synchronize()` at most once per second from the write path. This bounds what a power loss can cost to about a second. Test that `flush()` is throttled.
-- [ ] Commit: `feat(capture): one timeline-anchored writer for all tracks`.
+- [x] Rename `ProcessTapAudioWriter` to `TimelineAudioWriter` (keep a `typealias` for the old name until the old recorder is removed). Its behaviour is unchanged: t=0 is the anchor date, delivery gaps above 0.35 s are padded with silence.
+- [x] Add tests to `TimelineWriterTests` (the moved file): a writer anchored at T receiving its first buffer at T+2 s starts with 2 s of silence; buffers arriving back to back add no padding; after `close()` the file's frame count equals padded plus written frames; a write after a simulated failure reports the failure through `failureMessage()` and does not crash.
+- [x] Add `flush()`: `AVAudioFile` offers no explicit sync, so the writer keeps a `FileHandle` on the same URL and calls `synchronize()` at most once per second from the write path. This bounds what a power loss can cost to about a second. Test that `flush()` is throttled.
+- [x] Commit: `feat(capture): one timeline-anchored writer for all tracks`.
 
 ## Task 3: Does a killed writer leave a readable file? (measure first)
 
 The recovery design rests on a `.caf` that was never closed still being readable. The 8 Oct recovery suggests it is; this task proves it or changes the design.
 
-- [ ] Add a hidden CLI command `capture-selftest --out <file> --seconds N` (`shouldDisplay: false`) that writes a sine wave through `TimelineAudioWriter` in real-time-sized buffers and never closes the file.
-- [ ] Test `KilledWriterTests` in `LorreCaptureTests`: launch the built `Lorre` binary with that command as a subprocess, wait 3 s, send `SIGKILL`, then open the file with `AVAudioFile(forReading:)` and assert that it opens and holds at least 2 s of audio with the expected peak level. Skip (not fail) when the binary is not built.
-- [ ] **If the test passes:** record the measured loss (seconds missing at the end) in this plan.
-- [ ] **If it fails:** add `AudioFileRepair.repairIfNeeded(_:)` that rewrites the CAF data-chunk size from the file length (the header is otherwise intact because the format is written first), make the test pass through it, and have recovery (Task 6) call it before reading any track.
-- [ ] Commit: `test(capture): a writer killed mid-recording leaves recoverable audio`.
+- [x] Add a hidden CLI command `capture-selftest --out <file> --seconds N` (`shouldDisplay: false`) that writes a sine wave through `TimelineAudioWriter` in real-time-sized buffers and never closes the file.
+- [x] Test `KilledWriterTests` in `LorreCaptureTests`: launch the built `Lorre` binary with that command as a subprocess, wait 3 s, send `SIGKILL`, then open the file with `AVAudioFile(forReading:)` and assert that it opens and holds at least 2 s of audio with the expected peak level. Skip (not fail) when the binary is not built.
+- [x] **If the test passes:** record the measured loss (seconds missing at the end) in this plan.
+- [x] **If it fails:** add `AudioFileRepair.repairIfNeeded(_:)` that rewrites the CAF data-chunk size from the file length (the header is otherwise intact because the format is written first), make the test pass through it, and have recovery (Task 6) call it before reading any track.
+- [x] Commit: `test(capture): a writer killed mid-recording leaves recoverable audio`.
 
 ## Task 4: `CaptureEngine`
 
@@ -120,21 +120,21 @@ public protocol CaptureEngine: Sendable {
 }
 ```
 
-- [ ] Implement `LiveCaptureEngine` (an actor). The microphone part is ported from `AVFoundationRecorderService.startMicrophoneCapture` with the three voice-processing findings kept verbatim, comments included: voice processing only in mic+system mode with ducking at `.min`; more than two input channels reduced to channel 0; the tap's buffer sizing. It writes through `TimelineAudioWriter` anchored at the recording start. System audio uses `ProcessTapSystemAudioCapture` as today, writing to `system-audio.caf` in the folder. No live transcription, no preview mixer.
-- [ ] `stop()` never throws: it stops both pipelines, closes both writers, and reports failures per track. A failure on one track does not affect the other.
-- [ ] Start is all-or-nothing: if the second pipeline fails to start, the first is stopped and the files it created are removed, then the error is thrown. At that point nothing worth keeping has been captured.
-- [ ] Microphone device changes: observe `AVAudioEngineConfigurationChange`; restart the engine and re-install the tap, continuing into the same writer. The timeline writer pads the gap, so the track stays aligned. Log the event.
-- [ ] Hold a `SleepGuard` (`ProcessInfo.beginActivity` with `.userInitiated` and `.idleSystemSleepDisabled`) from start to stop.
-- [ ] Unit-test what can run without hardware: `CaptureSource` → expected track kinds and file names; `SleepGuard` begin/end balance. The engine itself is verified manually in Task 10, as `CLAUDE.md` prescribes for audio capture.
-- [ ] Commit: `feat(capture): engine that streams tracks into the conversation folder`.
+- [x] Implement `LiveCaptureEngine` (an actor). The microphone part is ported from `AVFoundationRecorderService.startMicrophoneCapture` with the three voice-processing findings kept verbatim, comments included: voice processing only in mic+system mode with ducking at `.min`; more than two input channels reduced to channel 0; the tap's buffer sizing. It writes through `TimelineAudioWriter` anchored at the recording start. System audio uses `ProcessTapSystemAudioCapture` as today, writing to `system-audio.caf` in the folder. No live transcription, no preview mixer.
+- [x] `stop()` never throws: it stops both pipelines, closes both writers, and reports failures per track. A failure on one track does not affect the other.
+- [x] Start is all-or-nothing: if the second pipeline fails to start, the first is stopped and the files it created are removed, then the error is thrown. At that point nothing worth keeping has been captured.
+- [x] Microphone device changes: observe `AVAudioEngineConfigurationChange`; restart the engine and re-install the tap, continuing into the same writer. The timeline writer pads the gap, so the track stays aligned. Log the event.
+- [x] Hold a `SleepGuard` (`ProcessInfo.beginActivity` with `.userInitiated` and `.idleSystemSleepDisabled`) from start to stop.
+- [x] Unit-test what can run without hardware: `CaptureSource` → expected track kinds and file names; `SleepGuard` begin/end balance. The engine itself is verified manually in Task 10, as `CLAUDE.md` prescribes for audio capture.
+- [x] Commit: `feat(capture): engine that streams tracks into the conversation folder`.
 
 ## Task 5: Schema v2 and the recording lock
 
-- [ ] Migration `v2` in `Schema.swift` (a new migration, `v1` is not edited): `ALTER TABLE conversation ADD COLUMN lastError TEXT;` and `ALTER TABLE conversation ADD COLUMN captureSource TEXT;`. Add both as optional properties on `Conversation`.
-- [ ] Tests: a database created at `v1` (build one by running only the first migration) upgrades and keeps its rows; the new fields round-trip; `DomainRawValueTests` pins `CaptureSource`.
-- [ ] Add to `ConversationStore`: `conversations(inState:)`, `setState(_:lastError:for:)`, `folder(for:paths:)` returning `conversations/<UUID>/`. Tests for each.
-- [ ] `RecordingLock`: `write(in folder:, pid:)`, `read(in:)`, `remove(in:)`, and `isLive(in:)` which is true only when the lock exists and `kill(pid, 0)` says that process is alive. Tests: no lock → not live; own pid → live; a pid that does not exist → not live; an unreadable lock → not live.
-- [ ] Commit: `feat(core): schema v2 for capture state; recording lock`.
+- [x] Migration `v2` in `Schema.swift` (a new migration, `v1` is not edited): `ALTER TABLE conversation ADD COLUMN lastError TEXT;` and `ALTER TABLE conversation ADD COLUMN captureSource TEXT;`. Add both as optional properties on `Conversation`.
+- [x] Tests: a database created at `v1` (build one by running only the first migration) upgrades and keeps its rows; the new fields round-trip; `DomainRawValueTests` pins `CaptureSource`.
+- [x] Add to `ConversationStore`: `conversations(inState:)`, `setState(_:lastError:for:)`, `folder(for:paths:)` returning `conversations/<UUID>/`. Tests for each.
+- [x] `RecordingLock`: `write(in folder:, pid:)`, `read(in:)`, `remove(in:)`, and `isLive(in:)` which is true only when the lock exists and `kill(pid, 0)` says that process is alive. Tests: no lock → not live; own pid → live; a pid that does not exist → not live; an unreadable lock → not live.
+- [x] Commit: `feat(core): schema v2 for capture state; recording lock`.
 
 ## Task 6: `RecordingCoordinator`
 
@@ -158,7 +158,7 @@ Order of operations, which is the whole point:
 | 4 | Start the engine | State → `processing`; or `interrupted` with `lastError` when a track failed and no track has audio |
 | 5 | On engine failure: remove the row, the lock and the (empty) folder; rethrow | A track failure with at least one good track still goes to `processing`, with `lastError` describing what is missing |
 
-- [ ] Test first with a `FakeCaptureEngine` (`Tests/LorreCaptureTests/RecordingCoordinatorTests.swift`):
+- [x] Test first with a `FakeCaptureEngine` (`Tests/LorreCaptureTests/RecordingCoordinatorTests.swift`):
   - after `start`, the conversation exists in state `recording`, its folder exists, its track rows match the source, and the lock is live;
   - engine start failure leaves no row, no folder and no lock, and the error reaches the caller;
   - `stop` moves the conversation to `processing` with the engine's duration and removes the lock;
@@ -167,7 +167,7 @@ Order of operations, which is the whole point:
   - a second `start` while recording throws and does not disturb the first;
   - `stop` without a recording throws;
   - **no code path in the coordinator deletes an audio file** except the engine-start failure in step 5 (assert by giving the fake engine files of non-zero size and checking they survive every failure case).
-- [ ] Implement, then commit: `feat(capture): recording coordinator that never drops audio`.
+- [x] Implement, then commit: `feat(capture): recording coordinator that never drops audio`.
 
 ## Task 7: `RecordingRecovery`
 
@@ -184,7 +184,7 @@ public struct RecordingRecovery: Sendable {
 }
 ```
 
-- [ ] Test first (`RecordingRecoveryTests.swift`), building real folders and small real `.caf` files in a temp root:
+- [x] Test first (`RecordingRecoveryTests.swift`), building real folders and small real `.caf` files in a temp root:
   - a `recording` conversation with a stale lock becomes `interrupted`, gets its duration from the longest track, and loses the lock;
   - a `recording` conversation with a live lock is reported as `stillLive` and not changed;
   - a `recording` conversation with no lock at all becomes `interrupted`;
@@ -193,54 +193,98 @@ public struct RecordingRecovery: Sendable {
   - a zero-byte or unreadable track is kept as a row and does not stop recovery of the other track;
   - conversations in `processing` are returned in `requeue`;
   - running recovery twice changes nothing the second time.
-- [ ] Implement; if Task 3 produced `AudioFileRepair`, call it before reading durations.
-- [ ] Commit: `feat(capture): recover abandoned recordings at launch`.
+- [x] Implement; if Task 3 produced `AudioFileRepair`, call it before reading durations.
+- [x] Commit: `feat(capture): recover abandoned recordings at launch`.
 
 ## Task 8: Processing bridge (temporary, until milestone 4)
 
-- [ ] Extract the transcript mapping from `LegacySessionImporter` into `LegacyTranscriptMapper.insert(transcriptJSON:conversationId:into:)` in `LorreCore`, used by the importer and the bridge. The importer tests must stay green unchanged.
-- [ ] `ConversationProcessor` in the `Lorre` target, modelled on `TranscribeCommand`'s register path:
+- [x] Extract the transcript mapping from `LegacySessionImporter` into `LegacyTranscriptMapper.insert(transcriptJSON:conversationId:into:)` in `LorreCore`, used by the importer and the bridge. The importer tests must stay green unchanged.
+- [x] `ConversationProcessor` in the `Lorre` target, modelled on `TranscribeCommand`'s register path:
   1. pick the input: `microphone.caf` + `system-audio.caf` → `RecorderAudioUtilities.mixToCanonicalFile` into `mix.caf` in the conversation folder (add a `mix` track row); a single track is used as is;
   2. import that file into a temporary `FileSessionStore`, run `ProcessingCoordinator`, read the resulting `transcript.json`;
   3. write it to the database through the mapper as the current transcript version; write `transcript.md` into the conversation folder with `MarkdownExportService`;
   4. run the automatic export when the user has it configured, so the downstream pipeline keeps receiving conversations;
   5. state → `proposed`, `lastError` cleared; on failure the state stays `processing`, `lastError` is set, and the audio is untouched.
-- [ ] `ProcessingQueue` (an actor): one conversation at a time, in arrival order; `enqueue(_:)`, and an `AsyncStream` of state changes for the UI.
-- [ ] Tests with the existing mock transcription/diarization services (`MockProcessingServices`): a conversation with two tracks gets a mix, a transcript version, segments and state `proposed`; a failing transcription leaves `processing` + `lastError` and every audio file in place; two enqueued conversations are processed in order; an `interrupted` conversation with audio can be processed and ends as `proposed`.
-- [ ] Commit: `feat: process recorded conversations into the database (bridge)`.
+- [x] `ProcessingQueue` (an actor): one conversation at a time, in arrival order; `enqueue(_:)`, and an `AsyncStream` of state changes for the UI.
+- [x] Tests with the existing mock transcription/diarization services (`MockProcessingServices`): a conversation with two tracks gets a mix, a transcript version, segments and state `proposed`; a failing transcription leaves `processing` + `lastError` and every audio file in place; two enqueued conversations are processed in order; an `interrupted` conversation with audio can be processed and ends as `proposed`.
+- [x] Commit: `feat: process recorded conversations into the database (bridge)`.
 
 ## Task 9: Menu-bar recorder, launch recovery, CLI
 
-- [ ] `RecorderModel` (`@MainActor @Observable`): states `idle`, `starting`, `recording(since:)`, `stopping`; `source` (remembered in `UserDefaults`); `levels`; `recent: [ConversationSummary]` (last five); `start()`, `stop()`. It owns the coordinator and the queue. Unit-test the state machine with the fake engine: start → recording → stop → idle; a start error returns to idle with a message; stop enqueues the conversation.
-- [ ] `MenuBarRecorderView` in a `MenuBarExtra` (window style): source picker (Microphone / Microphone + system audio), a Start button; while recording: elapsed time, a level bar per track, Stop; a one-line reminder at start ("Let the other person know this is being recorded"); below, the recent conversations with their state (`processing…`, `ready`, `interrupted`) and per row **Open transcript** (opens `transcript.md`) or **Process** for an interrupted one. The menu-bar icon shows a filled dot while recording. Use Sage tokens only; add tokens to `DesignSystem.swift` if one is missing.
-- [ ] In `LorreApp`: build the database, coordinator, queue and `RecorderModel` once; at launch run `RecordingRecovery`, enqueue `requeue`, and if anything was recovered or adopted show a notification "A recording was interrupted and has been recovered" that opens the menu-bar panel. The app must keep running, and recording, with every window closed.
-- [ ] Replace the Start pane in `RecorderStageViews.swift` with a short text and a button that opens the menu-bar panel. Remove the old window's entry points to `startRecordingTapped` (the method and the old recorder stay until milestone 3, unused). Point the call-detection prompt's Record action at `RecorderModel.start()`.
-- [ ] A system notification when processing finishes: "Your conversation is ready", opening the transcript.
-- [ ] CLI: `Lorre show <id> [--json]` prints the current transcript with speaker names and timestamps; `Lorre process <id>` runs the bridge for one conversation (models load in-process, like `transcribe`). Register both in `CLIRouting`. Test the rendering function of `show`.
-- [ ] Commit: `feat: menu-bar recorder with recovery at launch`.
+- [x] `RecorderModel` (`@MainActor @Observable`): states `idle`, `starting`, `recording(since:)`, `stopping`; `source` (remembered in `UserDefaults`); `levels`; `recent: [ConversationSummary]` (last five); `start()`, `stop()`. It owns the coordinator and the queue. Unit-test the state machine with the fake engine: start → recording → stop → idle; a start error returns to idle with a message; stop enqueues the conversation.
+- [x] `MenuBarRecorderView` in a `MenuBarExtra` (window style): source picker (Microphone / Microphone + system audio), a Start button; while recording: elapsed time, a level bar per track, Stop; a one-line reminder at start ("Let the other person know this is being recorded"); below, the recent conversations with their state (`processing…`, `ready`, `interrupted`) and per row **Open transcript** (opens `transcript.md`) or **Process** for an interrupted one. The menu-bar icon shows a filled dot while recording. Use Sage tokens only; add tokens to `DesignSystem.swift` if one is missing.
+- [x] In `LorreApp`: build the database, coordinator, queue and `RecorderModel` once; at launch run `RecordingRecovery`, enqueue `requeue`, and if anything was recovered or adopted show a notification "A recording was interrupted and has been recovered" that opens the menu-bar panel. The app must keep running, and recording, with every window closed.
+- [x] Replace the Start pane in `RecorderStageViews.swift` with a short text and a button that opens the menu-bar panel. Remove the old window's entry points to `startRecordingTapped` (the method and the old recorder stay until milestone 3, unused). Point the call-detection prompt's Record action at `RecorderModel.start()`.
+- [x] A system notification when processing finishes: "Your conversation is ready", opening the transcript.
+- [x] CLI: `Lorre show <id> [--json]` prints the current transcript with speaker names and timestamps; `Lorre process <id>` runs the bridge for one conversation (models load in-process, like `transcribe`). Register both in `CLIRouting`. Test the rendering function of `show`.
+- [x] Commit: `feat: menu-bar recorder with recovery at launch`.
 
 ## Task 10: Failure injection and manual verification
 
 Automated (added to the suites above, listed here as the acceptance set):
 
-- [ ] engine start failure → nothing left behind;
-- [ ] writer failure on one track → the other track complete, conversation processed with a note;
-- [ ] database write failure at Stop (close the database before `stop`) → audio on disk, and the next `RecordingRecovery.run()` on a fresh database handle finds it;
-- [ ] process killed while writing (Task 3) → audio readable;
-- [ ] recovery with stale lock, no lock, live lock, orphan folder.
+- [x] engine start failure → nothing left behind;
+- [x] writer failure on one track → the other track complete, conversation processed with a note;
+- [x] database write failure at Stop (close the database before `stop`) → audio on disk, and the next `RecordingRecovery.run()` on a fresh database handle finds it;
+- [x] process killed while writing (Task 3) → audio readable;
+- [x] recovery with stale lock, no lock, live lock, orphan folder.
 
 Manual, by Thijs, with the packaged app (record the outcome of each in this plan):
 
 - [ ] **Normal:** mic + system recording of a short call or a video playing; Stop; notification arrives; transcript opens; `Lorre list` shows it as `proposed`.
-- [ ] **Force-quit:** start a mic + system recording, speak for 30 s with audio playing, run `kill -9` on Lorre. Relaunch. Expected: a notification about a recovered recording; the conversation is `interrupted` with about 30 s duration; **Process** produces a transcript containing what was said.
+- [x] **Force-quit:** start a mic + system recording, speak for 30 s with audio playing, run `kill -9` on Lorre. Relaunch. Expected: a notification about a recovered recording; the conversation is `interrupted` with about 30 s duration; **Process** produces a transcript containing what was said.
 - [ ] **Window closed:** start recording, close the main window, keep talking, stop from the menu bar. Nothing is lost.
 - [ ] **Microphone switched:** plug in or unplug a headset mid-recording. The recording continues and the transcript covers both halves.
 - [ ] **Sleep:** leave a recording running for 10 minutes without touching the Mac; it does not sleep and the track is complete.
 - [ ] **Old sessions:** the old window still lists and plays the 12 existing sessions.
-- [ ] `./scripts/ci_check.sh` passes; update `CLAUDE.md` (the `LorreCapture` module and its rule: nothing in it may delete a track; where recordings live; the menu-bar recorder; the bridge being temporary) and the "Persistence" and "Architecture" sections that describe the old temp-folder flow.
-- [ ] Commit: `docs: capture module, recovery and the menu-bar recorder`.
+- [x] `./scripts/ci_check.sh` passes; update `CLAUDE.md` (the `LorreCapture` module and its rule: nothing in it may delete a track; where recordings live; the menu-bar recorder; the bridge being temporary) and the "Persistence" and "Architecture" sections that describe the old temp-folder flow.
+- [x] Commit: `docs: capture module, recovery and the menu-bar recorder`.
 
 ---
+
+## Execution notes (2026-11-13)
+
+Done: tasks 1–9 and the automated part of task 10. Open: five manual checks (marked above).
+
+**Measured**
+
+- A writer killed with `SIGKILL` leaves readable audio: 3.2–3.6 s readable after a kill at about 4 s
+  (the difference is process start-up plus the last unsynced stretch). No repair step was needed.
+- End to end with the packaged app and the real models, on a simulated abandoned recording (100 s cut
+  from the 8 Oct stems): `recover` → `process` (4 s) → `proposed`, 26 segments.
+- End to end through the app itself: a microphone + system recording was started from the window,
+  the process was killed with `kill -9` after 27 s, the app was started again. The recording was
+  recovered and transcribed without any action (state `proposed`, transcript on disk).
+- Tests: 229 (138 in `LorreTests`, 45 in `LorreCaptureTests`, 46 in `LorreCoreTests`), all passing.
+
+**Found while testing, and fixed**
+
+- The first recording after installing a new build contained 27 s of digital silence on the
+  microphone track; the second recording, minutes later, was fine. The likely cause is macOS
+  withholding the microphone from a newly signed build until permission is settled; this was not
+  confirmed. The engine now detects a microphone that delivers only zeros, the recorder says so
+  within three seconds, and such a recording is not sent for transcription.
+- `ProcessTapSystemAudioCapture.writeFailure()` always returned nil after `stop()`, because the
+  writer had been released by then. The failure is now kept.
+- Processing an imported conversation would have written the mix and transcript into the old
+  session folder. All output now goes to `conversations/<id>/`.
+
+**Deviations from the plan**
+
+- `CaptureSource` lives in `LorreCore` (the store records it), not in `LorreCapture`.
+- Recovered recordings are queued for transcription automatically instead of waiting for a click.
+- Added `Lorre recover` (the plan only had it implicitly) and `Lorre process --no-export`.
+- The menu-bar panel cannot be opened programmatically, so the old window's pane keeps a
+  Start/Stop button that drives the new recorder, next to the explanation.
+- No separate "interrupted" confirmation dialog; the panel's message and a notification carry it.
+
+**Not verified**
+
+- System audio in the new path. During the test the system track stayed empty: the test sound was
+  started after the recording, and the tap only includes processes that were already producing audio
+  (the limitation documented in `CLAUDE.md`). A real call must confirm it.
+- The menu-bar panel was not looked at on screen; its model is tested, the view is not.
+- Microphone switch, sleep prevention and the window-closed case.
 
 ## Out of scope for this milestone
 
