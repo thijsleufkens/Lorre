@@ -8,19 +8,18 @@ Lorre is a macOS-only SwiftUI app for local transcription. Audio is captured (mi
 
 Single executable target, Swift Package Manager. macOS 15+. No iOS/iPadOS targets and no plans for any.
 
-## Toolchain quirk — read first
+## Toolchain — read first
 
-`Package.swift` declares `// swift-tools-version: 6.3`. No Swift 6.3 toolchain is installed on this machine — only Swift 6.1.2 (CommandLineTools) and 6.2.4 (Xcode 26.x). Plain `swift build` / `swift test` will fail with a tools-version mismatch.
-
-**The only working workaround:** temporarily lower line 1 of `Package.swift` to `// swift-tools-version: 6.2`, run the command, **revert before committing**. The package features in use (`resources: [.copy("Fixtures")]`, etc.) are 6.2-compatible. Never commit a tools-version change. E.g.:
+`Package.swift` declares `// swift-tools-version: 6.3`. Use **Xcode's toolchain** (Swift 6.4.2 as of November 2026):
 
 ```bash
-cp Package.swift /tmp/pkg.bak && sed -i '' '1s/6.3/6.2/' Package.swift
-./scripts/swift_test.sh            # or: DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer xcrun swift build
-cp /tmp/pkg.bak Package.swift       # revert; verify `head -1 Package.swift` shows 6.3 and `git status` is clean
+DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer xcrun swift build
+./scripts/swift_test.sh            # wrapper that selects Xcode's toolchain
 ```
 
-(The old "route through Xcode's toolchain with `DEVELOPER_DIR` + `xcrun`" trick no longer suffices on its own: Xcode's 6.2.4 still can't open a 6.3 package. You must lower the tools-version regardless.)
+Plain `swift build` resolves to the Command Line Tools, which open the package but cannot build the app: the SwiftUI macro plugins (`@State` etc.) are missing there.
+
+With a toolchain older than 6.3 the package does not open at all. The workaround then is to lower line 1 of `Package.swift` to `6.2` for the duration of the command and revert it. **Never commit a tools-version change.**
 
 The `scripts/package_macos_app.sh` script must also be run with `DEVELOPER_DIR` set and `PATH` including Xcode's toolchain:
 
@@ -43,7 +42,7 @@ PATH=/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolch
 | Install built app | `rm -rf /Applications/Lorre.app && cp -R dist/Lorre.app /Applications/` |
 | Transcribe headless | `dist/Lorre.app/Contents/MacOS/Lorre transcribe <file> [--register]` |
 
-All `swift` invocations need the toolchain workaround above. `scripts/swift_test.sh` is a thin wrapper.
+All `swift` invocations need Xcode's toolchain as described above. `scripts/swift_test.sh` is a thin wrapper.
 
 ## Repository layout
 
