@@ -6,7 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 Lorre is a macOS-only SwiftUI app for local transcription. Audio is captured (microphone, system audio via CoreAudio Process Tap, or both stems), processed locally via FluidAudio (Parakeet TDT 0.6B v3 for ASR; offline VBx for diarization), and exported as Markdown / plain text / JSON. Sessions persist to `~/Library/Application Support/Lorre/sessions/<uuid>/`.
 
-Single executable target, Swift Package Manager. macOS 15+. No iOS/iPadOS targets and no plans for any.
+Swift Package Manager: the `Lorre` executable and the `LorreCore` library. macOS 26+. No iOS/iPadOS targets and no plans for any.
 
 ## Toolchain — read first
 
@@ -43,6 +43,17 @@ PATH=/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolch
 | Transcribe headless | `dist/Lorre.app/Contents/MacOS/Lorre transcribe <file> [--register]` |
 
 All `swift` invocations need Xcode's toolchain as described above. `scripts/swift_test.sh` is a thin wrapper.
+
+## Rebuild in progress — read before adding code
+
+Lorre is being rebuilt around approved conversation records (spec: `docs/superpowers/specs/2026-11-13-lorre-product-spec.md`, plans in `docs/superpowers/plans/`). Two generations of code live side by side:
+
+- **`Sources/LorreCore/`** (new): GUI-free library with the domain model (`Conversation`, `Participant`, `Segment`, `Outcome`, …), the SQLite store (GRDB; `LorreDatabase`, `ConversationStore`, `SearchStore`) and `LegacySessionImporter`. Rules: no UI imports, no dependency on the `Lorre` target, every model behind a protocol. Enum raw values are stored and exported, so renaming a case needs a migration (`DomainRawValueTests` guards this). Schema changes go in a new `DatabaseMigrator` migration in `Store/Schema.swift`, never by editing `v1`.
+- **`Sources/Lorre/`** (existing app): still the running UI, on the old file store. New features do not go here; it is replaced milestone by milestone. The old `sessions/` folder is **read-only** for new code.
+
+The database is `~/Library/Application Support/Lorre/lorre.sqlite`. UUIDs are stored as uppercase text. New commands: `Lorre import-legacy` (repeatable, never writes to `sessions/`) and `Lorre list [--json]`; both take `--root <path>` for testing. A new subcommand must be added to `CLIRouting.subcommands` as well as `LorreCLI` (a test enforces it).
+
+Signing: `LORRE_SIGN_IDENTITY` selects the code-signing identity for `scripts/package_macos_app.sh` (default ad-hoc). See `docs/signing.md`.
 
 ## Repository layout
 

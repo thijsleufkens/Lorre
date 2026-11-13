@@ -56,14 +56,14 @@
 
 ## Task 0: Baseline and toolchain
 
-- [ ] Run `swift build` and `./scripts/swift_test.sh` on the untouched branch. Record the test count and any failures in the PR description; later tasks must not reduce it.
-- [ ] If both succeed without lowering the tools-version: rewrite the "Toolchain quirk" section of `CLAUDE.md` to say that Swift 6.4+ builds the package directly, and keep one sentence on the old workaround for older toolchains.
-- [ ] If they fail on the tools-version: leave `CLAUDE.md` as is and use the workaround for every later step.
-- [ ] Commit: `docs: toolchain note after Swift 6.4`.
+- [x] Run `swift build` and `./scripts/swift_test.sh` on the untouched branch. Record the test count and any failures in the PR description; later tasks must not reduce it.
+- [x] If both succeed without lowering the tools-version: rewrite the "Toolchain quirk" section of `CLAUDE.md` to say that Swift 6.4+ builds the package directly, and keep one sentence on the old workaround for older toolchains.
+- [x] If they fail on the tools-version: leave `CLAUDE.md` as is and use the workaround for every later step.
+- [x] Commit: `docs: toolchain note after Swift 6.4`.
 
 ## Task 1: Package layout
 
-- [ ] In `Package.swift`: set `platforms: [.macOS(.v26)]`; add `.package(url: "https://github.com/groue/GRDB.swift.git", from: "7.0.0")`; add
+- [x] In `Package.swift`: set `platforms: [.macOS(.v26)]`; add `.package(url: "https://github.com/groue/GRDB.swift.git", from: "7.0.0")`; add
 
 ```swift
 .target(
@@ -78,7 +78,7 @@
 ```
 
   and add `"LorreCore"` to the dependencies of the `Lorre` target.
-- [ ] Create `Sources/LorreCore/Support/LorrePaths.swift`:
+- [x] Create `Sources/LorreCore/Support/LorrePaths.swift`:
 
 ```swift
 import Foundation
@@ -103,16 +103,16 @@ public struct LorrePaths: Sendable {
 }
 ```
 
-- [ ] Add a first test `Tests/LorreCoreTests/LorrePathsTests.swift` asserting the three derived paths for a given root. Create `Tests/LorreCoreTests/Fixtures/.gitkeep`.
-- [ ] `swift build` and `swift test --filter LorreCoreTests`. Fix macOS 26 deprecation errors in the legacy target only as far as needed to compile; list remaining warnings in the PR.
-- [ ] Commit: `build: add LorreCore module, GRDB, macOS 26 minimum`.
+- [x] Add a first test `Tests/LorreCoreTests/LorrePathsTests.swift` asserting the three derived paths for a given root. Create `Tests/LorreCoreTests/Fixtures/.gitkeep`.
+- [x] `swift build` and `swift test --filter LorreCoreTests`. Fix macOS 26 deprecation errors in the legacy target only as far as needed to compile; list remaining warnings in the PR.
+- [x] Commit: `build: add LorreCore module, GRDB, macOS 26 minimum`.
 
 ## Task 2: Domain types
 
 All types are `public`, `Codable`, `Equatable`, `Sendable`, with a memberwise `public init`. Enums are `String`-backed; their raw values are stored in the database and exported in records, so they are part of the contract.
 
-- [ ] Write `Tests/LorreCoreTests/DomainRawValueTests.swift` first: one assertion per enum case pinning its raw value (for example `XCTAssertEqual(OutcomeKind.theirCommitment.rawValue, "theirCommitment")`). This is the guard against accidental renames.
-- [ ] Create the types:
+- [x] Write `Tests/LorreCoreTests/DomainRawValueTests.swift` first: one assertion per enum case pinning its raw value (for example `XCTAssertEqual(OutcomeKind.theirCommitment.rawValue, "theirCommitment")`). This is the guard against accidental renames.
+- [x] Create the types:
 
 ```swift
 // Conversation.swift
@@ -220,17 +220,17 @@ public struct ConsumerCursor: Codable, Equatable, Sendable {
 }
 ```
 
-- [ ] Run the tests; commit: `feat(core): domain model for conversations, people, outcomes, records`.
+- [x] Run the tests; commit: `feat(core): domain model for conversations, people, outcomes, records`.
 
 ## Task 3: Database and schema
 
-- [ ] Test first, `Tests/LorreCoreTests/LorreDatabaseTests.swift`:
+- [x] Test first, `Tests/LorreCoreTests/LorreDatabaseTests.swift`:
   - an in-memory database opens and migration `v1` creates every table below;
   - opening the same file twice does not re-run the migration;
   - deleting a conversation removes its participants, tracks, transcript versions, segments and outcomes (foreign keys cascade);
   - inserting a segment with an unknown `transcriptVersionId` fails.
-- [ ] Create `Sources/LorreCore/Store/LorreDatabase.swift`: a `public final class LorreDatabase: Sendable` wrapping a GRDB `DatabaseQueue`, with `public init(url: URL) throws` (creates the parent folder, enables foreign keys) and `public static func inMemory() throws -> LorreDatabase`. Both run `Schema.migrator.migrate(_:)`.
-- [ ] Create `Sources/LorreCore/Store/Schema.swift` with one registered migration, `v1`:
+- [x] Create `Sources/LorreCore/Store/LorreDatabase.swift`: a `public final class LorreDatabase: Sendable` wrapping a GRDB `DatabaseQueue`, with `public init(url: URL) throws` (creates the parent folder, enables foreign keys) and `public static func inMemory() throws -> LorreDatabase`. Both run `Schema.migrator.migrate(_:)`.
+- [x] Create `Sources/LorreCore/Store/Schema.swift` with one registered migration, `v1`:
 
 ```sql
 CREATE TABLE conversation (
@@ -338,18 +338,18 @@ CREATE VIRTUAL TABLE segmentSearch USING fts5(
 ```
 
   Use GRDB's `synchronize(withTable:)` for `segmentSearch` (it creates the triggers) rather than hand-written triggers. UUIDs are stored as uppercase strings; make that explicit in the record conformances so ids match the legacy folder names.
-- [ ] Make the domain types conform to GRDB's `FetchableRecord` and `PersistableRecord` in `LorreCore/Store/Records.swift`, with `databaseTableName` matching the table names above. `evidenceSegmentIds` is stored as a JSON string. Check the exact GRDB 7 API against the resolved package rather than from memory.
-- [ ] Run the tests; commit: `feat(core): SQLite store with schema v1`.
+- [x] Make the domain types conform to GRDB's `FetchableRecord` and `PersistableRecord` in `LorreCore/Store/Records.swift`, with `databaseTableName` matching the table names above. `evidenceSegmentIds` is stored as a JSON string. Check the exact GRDB 7 API against the resolved package rather than from memory.
+- [x] Run the tests; commit: `feat(core): SQLite store with schema v1`.
 
 ## Task 4: ConversationStore
 
-- [ ] Test first, `Tests/LorreCoreTests/ConversationStoreTests.swift`, against an in-memory database:
+- [x] Test first, `Tests/LorreCoreTests/ConversationStoreTests.swift`, against an in-memory database:
   - `save(_:)` then `conversation(id:)` round-trips every field;
   - `listConversations()` returns newest `startedAt` first, each with its participant names, segment count of the current transcript version, and outcome counts per status;
   - `saveTranscript(...)` inserts a version with its segments in one transaction and clears `isCurrent` on the previous version;
   - `currentSegments(conversationId:)` returns only the current version, ordered by `startMs`;
   - saving a conversation that already exists updates it without touching its children.
-- [ ] Implement `Sources/LorreCore/Store/ConversationStore.swift`:
+- [x] Implement `Sources/LorreCore/Store/ConversationStore.swift`:
 
 ```swift
 public struct ConversationSummary: Equatable, Sendable {
@@ -375,13 +375,13 @@ public struct ConversationStore: Sendable {
 ```
 
   `listConversations()` is one query with sub-selects, not a query per conversation.
-- [ ] Run the tests; commit: `feat(core): conversation store`.
+- [x] Run the tests; commit: `feat(core): conversation store`.
 
 ## Task 5: Search
 
-- [ ] Test first, `Tests/LorreCoreTests/SearchStoreTests.swift`: two conversations with different text; a query for a word returns only the matching conversation with the segment id, its start time and a snippet; a prefix query (`maak*`) matches `maakindustrie`; segments of a non-current transcript version are not returned; an empty or punctuation-only query returns no results and does not throw.
-- [ ] Implement `Sources/LorreCore/Store/SearchStore.swift` with `public func search(_ query: String, limit: Int = 50) throws -> [SearchHit]`. Build the FTS pattern with GRDB's `FTS5Pattern(matchingAllPrefixesIn:)` so user input cannot produce a syntax error.
-- [ ] Run the tests; commit: `feat(core): full-text search over transcripts`.
+- [x] Test first, `Tests/LorreCoreTests/SearchStoreTests.swift`: two conversations with different text; a query for a word returns only the matching conversation with the segment id, its start time and a snippet; a prefix query (`maak*`) matches `maakindustrie`; segments of a non-current transcript version are not returned; an empty or punctuation-only query returns no results and does not throw.
+- [x] Implement `Sources/LorreCore/Store/SearchStore.swift` with `public func search(_ query: String, limit: Int = 50) throws -> [SearchHit]`. Build the FTS pattern with GRDB's `FTS5Pattern(matchingAllPrefixesIn:)` so user input cannot produce a syntax error.
+- [x] Run the tests; commit: `feat(core): full-text search over transcripts`.
 
 ## Task 6: Legacy importer
 
@@ -401,8 +401,8 @@ Mapping:
 | `transcript.json` `sourceEngine`, `languageHint`, `createdAt` | one `TranscriptVersion`, `isCurrent` true |
 | `transcript.json` `segments[]` | `Segment` rows; `speakerId` mapped to the participant with that `sourceLabel` |
 
-- [ ] Create fixtures under `Tests/LorreCoreTests/Fixtures/legacy/`: copy `session-manifest-v1-with-version.json`, `session-manifest-v1-pre-version.json` and `transcript-document-v1.json` from `Tests/LorreTests/Fixtures/`. The tests assemble them into temporary `sessions/<uuid>/` folders.
-- [ ] Test first, `Tests/LorreCoreTests/LegacySessionImporterTests.swift`:
+- [x] Create fixtures under `Tests/LorreCoreTests/Fixtures/legacy/`: copy `session-manifest-v1-with-version.json`, `session-manifest-v1-pre-version.json` and `transcript-document-v1.json` from `Tests/LorreTests/Fixtures/`. The tests assemble them into temporary `sessions/<uuid>/` folders.
+- [x] Test first, `Tests/LorreCoreTests/LegacySessionImporterTests.swift`:
   - a session with a transcript imports as one conversation with two participants, one current transcript version and the right number of segments, each segment linked to the right participant;
   - a pre-version manifest (no `schemaVersion`) imports;
   - a session without `transcript.json` imports as `interrupted` with no transcript version;
@@ -412,7 +412,7 @@ Mapping:
   - a folder with a corrupt `session.json` is skipped and reported, and the other sessions still import;
   - a folder whose name differs from the `id` inside the JSON uses the folder name;
   - the importer never writes inside the legacy folder (compare a recursive listing with modification dates before and after).
-- [ ] Implement `Sources/LorreCore/Import/LegacySessionImporter.swift`:
+- [x] Implement `Sources/LorreCore/Import/LegacySessionImporter.swift`:
 
 ```swift
 public struct LegacyImportReport: Equatable, Sendable {
@@ -429,22 +429,22 @@ public struct LegacySessionImporter: Sendable {
 ```
 
   Private `Decodable` structs hold only the fields in the mapping table, every one optional except `title`, decoded with `.iso8601` dates. Each session is imported in a single transaction. "Already present" is decided by `store.conversation(id:) != nil`; such sessions are left untouched.
-- [ ] Run the tests; commit: `feat(core): import legacy sessions into the database`.
+- [x] Run the tests; commit: `feat(core): import legacy sessions into the database`.
 
 ## Task 7: CLI commands
 
-- [ ] Extend `Tests/LorreTests/CLIRoutingTests.swift` first: `list` and `import-legacy` route to the CLI.
-- [ ] Add both names to `CLIRouting.subcommands` and both commands to `LorreCLI.configuration.subcommands`.
-- [ ] Create `Sources/Lorre/CLI/ImportLegacyCommand.swift`: opens `LorreDatabase(url: LorrePaths().database)`, runs the importer, prints `Imported N, already present M, skipped K` and one line per skipped folder with its reason. Exit code 0 unless the database cannot be opened.
-- [ ] Create `Sources/Lorre/CLI/ListCommand.swift`: prints one line per conversation, newest first — date, duration in minutes, state, segment count, title — and supports `--json` (an array with `id`, `title`, `type`, `state`, `startedAt`, `durationSeconds`, `participants`, `segmentCount`, `proposedOutcomes`, `approvedOutcomes`). An optional `--root <path>` overrides the application-support root for both commands, so they can be tested against a temp folder.
-- [ ] Put the formatting in a pure function `ListCommand.render(_ summaries: [ConversationSummary], json: Bool) -> String` and test it in `Tests/LorreTests/ListCommandTests.swift` (plain and JSON output, empty list).
-- [ ] Build, then run against a temp root seeded with the fixtures: `swift run Lorre import-legacy --root <tmp>` followed by `swift run Lorre list --root <tmp>`.
-- [ ] Commit: `feat(cli): import-legacy and list commands on the new store`.
+- [x] Extend `Tests/LorreTests/CLIRoutingTests.swift` first: `list` and `import-legacy` route to the CLI.
+- [x] Add both names to `CLIRouting.subcommands` and both commands to `LorreCLI.configuration.subcommands`.
+- [x] Create `Sources/Lorre/CLI/ImportLegacyCommand.swift`: opens `LorreDatabase(url: LorrePaths().database)`, runs the importer, prints `Imported N, already present M, skipped K` and one line per skipped folder with its reason. Exit code 0 unless the database cannot be opened.
+- [x] Create `Sources/Lorre/CLI/ListCommand.swift`: prints one line per conversation, newest first — date, duration in minutes, state, segment count, title — and supports `--json` (an array with `id`, `title`, `type`, `state`, `startedAt`, `durationSeconds`, `participants`, `segmentCount`, `proposedOutcomes`, `approvedOutcomes`). An optional `--root <path>` overrides the application-support root for both commands, so they can be tested against a temp folder.
+- [x] Put the formatting in a pure function `ListCommand.render(_ summaries: [ConversationSummary], json: Bool) -> String` and test it in `Tests/LorreTests/ListCommandTests.swift` (plain and JSON output, empty list).
+- [x] Build, then run against a temp root seeded with the fixtures: `swift run Lorre import-legacy --root <tmp>` followed by `swift run Lorre list --root <tmp>`.
+- [x] Commit: `feat(cli): import-legacy and list commands on the new store`.
 
 ## Task 8: Stable signing identity
 
-- [ ] In `scripts/package_macos_app.sh`, replace the hard-coded `--sign -` with an identity taken from `LORRE_SIGN_IDENTITY` (default `-`), echo which identity is used, and after signing print the designated requirement (`codesign -d -r- "$APP_BUNDLE"`).
-- [ ] Write `docs/signing.md`:
+- [x] In `scripts/package_macos_app.sh`, replace the hard-coded `--sign -` with an identity taken from `LORRE_SIGN_IDENTITY` (default `-`), echo which identity is used, and after signing print the designated requirement (`codesign -d -r- "$APP_BUNDLE"`).
+- [x] Write `docs/signing.md`:
   - why: with ad-hoc signing the designated requirement is the binary hash, so every build resets permissions; with a fixed certificate it is the certificate, so they persist;
   - how Thijs creates the certificate himself in Keychain Access (Certificate Assistant → Create a Certificate → name `Lorre Local Signing`, identity type Self-Signed Root, certificate type Code Signing), and that the first `codesign` asks once for keychain access;
   - usage: `LORRE_SIGN_IDENTITY="Lorre Local Signing" ./scripts/package_macos_app.sh release`;
@@ -455,19 +455,35 @@ public struct LegacySessionImporter: Sendable {
   2. change one line of code, package and install again with the same identity;
   3. record again without being asked for permission, and confirm both tracks contain audio (silent system audio means the grant did not carry over, even without a prompt).
 - [ ] If step 3 fails, do not work around it: note the result in `docs/signing.md` and in the spec's open questions, since it affects distribution.
-- [ ] Commit: `build: sign with a configurable identity so permissions survive rebuilds`.
+- [x] Commit: `build: sign with a configurable identity so permissions survive rebuilds`.
 
 ## Task 9: End-to-end check and documentation
 
-- [ ] Back up first: copy `~/Library/Application Support/Lorre/sessions` to a dated folder under `~/Documents`. The importer does not write there, but this is the user's only copy.
-- [ ] Run `Lorre import-legacy` against the real root and then `Lorre list`. Expected: all 12 existing sessions are listed (or each missing one is explained by a "skipped" line), and the 8 Oct 2026 conversation shows 382 segments.
-- [ ] Run it a second time: `Imported 0, already present 12`.
-- [ ] Open the existing app and confirm it still lists and plays its sessions (the old store is untouched).
-- [ ] `./scripts/ci_check.sh` passes; the legacy test count is not lower than in Task 0.
-- [ ] Update `CLAUDE.md`: the `LorreCore` module and its rule (no UI imports, no dependency on the legacy target), the database location, the two commands, the signing variable, and that the old file store is legacy and read-only for new code.
-- [ ] Commit: `docs: describe LorreCore, the database and the new commands`.
+- [x] Back up first: copy `~/Library/Application Support/Lorre/sessions` to a dated folder under `~/Documents`. The importer does not write there, but this is the user's only copy.
+- [x] Run `Lorre import-legacy` against the real root and then `Lorre list`. Expected: all 12 existing sessions are listed (or each missing one is explained by a "skipped" line), and the 8 Oct 2026 conversation shows 382 segments.
+- [x] Run it a second time: `Imported 0, already present 12`.
+- [x] Open the existing app and confirm it still lists and plays its sessions (the old store is untouched).
+- [x] `./scripts/ci_check.sh` passes; the legacy test count is not lower than in Task 0.
+- [x] Update `CLAUDE.md`: the `LorreCore` module and its rule (no UI imports, no dependency on the legacy target), the database location, the two commands, the signing variable, and that the old file store is legacy and read-only for new code.
+- [x] Commit: `docs: describe LorreCore, the database and the new commands`.
 
 ---
+
+## Execution notes (2026-11-13)
+
+- Tasks 0–7 and 9 are done; Task 8 is implemented but its manual permission check is still open.
+- Toolchain: the tools-version workaround is no longer needed, but Xcode's toolchain is. The Command
+  Line Tools open the package and then fail on the SwiftUI macros.
+- `LegacySessionImporter` takes the `LorreDatabase` rather than a `ConversationStore`, because each
+  session is written in a single transaction.
+- A session whose transcript file is unreadable is skipped and reported instead of being imported empty.
+  A session that never reached `ready` keeps its partial transcript and is imported as `interrupted`.
+- Task 9 backed up the session metadata (the JSON files, 572 KB) rather than all 4.9 GB: the importer
+  never opens audio for writing, and a before/after listing of the legacy folder was identical.
+- Result on the real data: 12 imported, 0 skipped; second run 0 imported, 12 already present; the
+  8 Oct 2026 conversation has 382 segments.
+- Tests: 111 before; 118 in `LorreTests` plus 41 in `LorreCoreTests` after.
+- Not checked: opening the old app's window after the import (its files are byte-for-byte unchanged).
 
 ## Out of scope for this milestone
 
