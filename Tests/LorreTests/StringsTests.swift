@@ -112,4 +112,17 @@ final class StringsTests: XCTestCase {
             XCTAssertTrue(strings.lastConversationOn("8 okt").contains("8 okt"))
         }
     }
+
+    func testMenuBarTextsExistInBothLanguages() {
+        XCTAssertEqual(Strings.dutch.menuStartRecording, "Opname starten")
+        XCTAssertEqual(Strings.english.menuStartRecording, "Start recording")
+        XCTAssertEqual(Strings.dutch.menuOpenLorre, "Lorre openen")
+        XCTAssertEqual(Strings.dutch.menuReadyLine(minutes: 12), "Klaar · 12 min")
+        XCTAssertEqual(Strings.english.menuReadyLine(minutes: 3), "Ready · 3 min")
+        XCTAssertEqual(Strings.dutch.menuReadyLine(minutes: nil), "Klaar")
+        XCTAssertEqual(Strings.dutch.menuElapsedLabel("01:15"), "Opgenomen: 01:15")
+        XCTAssertEqual(Strings.english.menuElapsedLabel("01:15"), "Recorded: 01:15")
+        XCTAssertNotEqual(Strings.dutch.notifyReadyTitle, Strings.english.notifyReadyTitle)
+        XCTAssertNotEqual(Strings.dutch.startupFailed, Strings.english.startupFailed)
+    }
 }

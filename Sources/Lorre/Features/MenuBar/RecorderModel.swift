@@ -56,6 +56,7 @@ final class RecorderModel {
     private let queue: ProcessingQueue
     private let defaults: UserDefaults
     private let notify: @Sendable (_ title: String, _ body: String) -> Void
+    private let strings: @MainActor () -> Strings
     private var levelTask: Task<Void, Never>?
     private var eventTask: Task<Void, Never>?
 
@@ -65,7 +66,8 @@ final class RecorderModel {
         coordinator: RecordingCoordinator,
         queue: ProcessingQueue,
         defaults: UserDefaults = .standard,
-        notify: @escaping @Sendable (_ title: String, _ body: String) -> Void = { _, _ in }
+        notify: @escaping @Sendable (_ title: String, _ body: String) -> Void = { _, _ in },
+        strings: @escaping @MainActor () -> Strings = { Strings.current }
     ) {
         self.paths = paths
         self.store = ConversationStore(database: database)
@@ -73,6 +75,7 @@ final class RecorderModel {
         self.queue = queue
         self.defaults = defaults
         self.notify = notify
+        self.strings = strings
         self.source = defaults.string(forKey: Self.sourceDefaultsKey).flatMap(CaptureSource.init(rawValue:))
             ?? .microphoneAndSystemAudio
     }
@@ -153,7 +156,7 @@ final class RecorderModel {
                 ? "A recording was interrupted and has been recovered. It is being transcribed now."
                 : "\(count) recordings were interrupted and have been recovered. They are being transcribed now."
             message = text
-            notify("Recording recovered", text)
+            notify(strings().notifyRecoveredTitle, strings().errorRecovered)
         }
         await refresh()
         return report
@@ -191,11 +194,12 @@ final class RecorderModel {
     }
 
     private func processingFinished(_ id: UUID, error: String?) {
-        let title = rows.first { $0.id == id }?.title ?? "Your conversation"
+        let title = rows.first { $0.id == id }?.title ?? strings().untitledConversation
         if let error {
-            notify("Transcription failed", "\(title): \(error)")
+            let reason = ViewFormat.friendlyError(error, strings: strings()) ?? strings().errorGeneric
+            notify(strings().notifyFailedTitle, "\(title): \(reason)")
         } else {
-            notify("Your conversation is ready", title)
+            notify(strings().notifyReadyTitle, title)
         }
     }
 
@@ -210,7 +214,7 @@ final class RecorderModel {
                 if silent.contains(.microphone), self.message == nil {
                     // Say it while the conversation is still going on, not after it is over.
                     self.message = CaptureAdvice.silentMicrophone
-                    self.notify("No sound from the microphone", CaptureAdvice.silentMicrophone)
+                    self.notify(self.strings().notifyNoSoundTitle, self.strings().errorSilentMicrophone)
                 }
                 try? await Task.sleep(for: .milliseconds(200))
             }

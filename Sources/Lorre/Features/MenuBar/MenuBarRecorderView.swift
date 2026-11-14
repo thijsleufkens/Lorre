@@ -5,11 +5,12 @@ import SwiftUI
 /// The recorder that lives in the menu bar: start, stop, and what happened to recent conversations.
 struct MenuBarRecorderView: View {
     @Bindable var model: RecorderModel
+    private let strings = Strings.current
 
     var body: some View {
         VStack(alignment: .leading, spacing: DS.Space.x3) {
             header
-            if let message = ViewFormat.friendlyError(model.message, strings: Strings.current) {
+            if let message = ViewFormat.friendlyError(model.message, strings: strings) {
                 Text(message)
                     .font(DS.FontStyle.helper)
                     .foregroundStyle(DS.ColorToken.statusError)
@@ -38,9 +39,11 @@ struct MenuBarRecorderView: View {
             Spacer()
             if case let .recording(since) = model.phase {
                 TimelineView(.periodic(from: since, by: 1)) { context in
-                    Text(Self.elapsed(from: since, to: context.date))
+                    let clock = Self.elapsed(from: since, to: context.date)
+                    Text(clock)
                         .font(DS.FontStyle.timerCompact)
                         .foregroundStyle(DS.ColorToken.accentLive)
+                        .accessibilityLabel(strings.menuElapsedLabel(clock))
                 }
             }
         }
@@ -50,10 +53,10 @@ struct MenuBarRecorderView: View {
     private var controls: some View {
         switch model.phase {
         case .idle, .starting:
-            Picker("Source", selection: $model.source) {
-                Text("Microphone + system audio").tag(CaptureSource.microphoneAndSystemAudio)
-                Text("Microphone only").tag(CaptureSource.microphone)
-                Text("System audio only").tag(CaptureSource.systemAudio)
+            Picker(strings.menuSourceLabel, selection: $model.source) {
+                Text(strings.menuSourceBoth).tag(CaptureSource.microphoneAndSystemAudio)
+                Text(strings.menuSourceMicrophone).tag(CaptureSource.microphone)
+                Text(strings.menuSourceSystem).tag(CaptureSource.systemAudio)
             }
             .labelsHidden()
             .disabled(model.phase == .starting)
@@ -63,7 +66,7 @@ struct MenuBarRecorderView: View {
             } label: {
                 HStack(spacing: DS.Space.x2) {
                     Circle().fill(DS.ColorToken.accentLive).frame(width: DS.Space.x2_5, height: DS.Space.x2_5)
-                    Text(model.phase == .starting ? "Starting…" : "Start recording")
+                    Text(model.phase == .starting ? strings.starting : strings.menuStartRecording)
                 }
                 .frame(maxWidth: .infinity)
             }
@@ -72,7 +75,7 @@ struct MenuBarRecorderView: View {
             .controlSize(.large)
             .disabled(model.phase == .starting)
 
-            Text("Let the other person know the conversation is being recorded.")
+            Text(strings.menuConsentHint)
                 .font(DS.FontStyle.helper)
                 .foregroundStyle(DS.ColorToken.fgSecondary)
                 .fixedSize(horizontal: false, vertical: true)
@@ -80,13 +83,13 @@ struct MenuBarRecorderView: View {
         case .recording, .stopping:
             VStack(alignment: .leading, spacing: DS.Space.x1_5) {
                 ForEach(model.source.trackKinds, id: \.self) { kind in
-                    LevelRow(label: kind == .microphone ? "You" : "Others", level: model.levels[kind] ?? 0)
+                    LevelRow(label: kind == .microphone ? strings.menuYou : strings.menuOthers, level: model.levels[kind] ?? 0)
                 }
             }
             Button {
                 Task { await model.stop() }
             } label: {
-                Text(model.phase == .stopping ? "Stopping…" : "Stop recording")
+                Text(model.phase == .stopping ? strings.stopping : strings.menuStopRecording)
                     .frame(maxWidth: .infinity)
             }
             .buttonStyle(.borderedProminent)
@@ -98,7 +101,7 @@ struct MenuBarRecorderView: View {
 
     private var recent: some View {
         VStack(alignment: .leading, spacing: DS.Space.x2) {
-            Text("Recent")
+            Text(strings.menuRecent)
                 .font(DS.FontStyle.sectionLabel)
                 .foregroundStyle(DS.ColorToken.serifInk)
                 .accessibilityAddTraits(.isHeader)
@@ -112,16 +115,16 @@ struct MenuBarRecorderView: View {
 
     private var footer: some View {
         HStack {
-            Button("Open Lorre") {
+            Button(strings.menuOpenLorre) {
                 NSApp.activate()
                 for window in NSApp.windows where window.canBecomeMain {
                     window.makeKeyAndOrderFront(nil)
                 }
             }
             Spacer()
-            Button("Quit") { NSApp.terminate(nil) }
+            Button(strings.menuQuit) { NSApp.terminate(nil) }
                 .disabled(model.isBusy)
-                .help(model.isBusy ? "Stop the recording first." : "")
+                .help(model.isBusy ? strings.menuQuitHelp : "")
         }
         .buttonStyle(.link)
         .font(DS.FontStyle.helper)
@@ -160,6 +163,7 @@ private struct LevelRow: View {
 private struct RecentRow: View {
     let row: RecorderModel.Row
     let process: () -> Void
+    private let strings = Strings.current
 
     var body: some View {
         HStack(alignment: .firstTextBaseline, spacing: DS.Space.x2) {
@@ -177,11 +181,12 @@ private struct RecentRow: View {
             switch row.status {
             case .ready:
                 if let url = row.transcriptURL {
-                    Button("Open") { NSWorkspace.shared.open(url) }
+                    Button(strings.menuOpen) { NSWorkspace.shared.open(url) }
+                        .help(strings.menuOpenHelp)
                 }
             case .interrupted, .failed:
-                Button(Strings.current.retry, action: process)
-                    .help(Strings.current.retryHelp)
+                Button(strings.retry, action: process)
+                    .help(strings.retryHelp)
             case .recording, .waiting, .processing:
                 EmptyView()
             }
@@ -192,12 +197,12 @@ private struct RecentRow: View {
 
     private var statusText: String {
         switch row.status {
-        case .recording: "Recording…"
-        case .waiting: "Waiting to be transcribed"
-        case .processing: "Transcribing…"
-        case .ready: row.durationSeconds.map { "Ready · \(Int(($0 / 60).rounded())) min" } ?? "Ready"
-        case .interrupted: ViewFormat.friendlyError(row.error, strings: Strings.current) ?? Strings.current.errorInterrupted
-        case .failed: ViewFormat.friendlyError(row.error, strings: Strings.current) ?? Strings.current.stateFailed
+        case .recording: strings.menuRowRecording
+        case .waiting: strings.menuRowWaiting
+        case .processing: strings.menuRowProcessing
+        case .ready: strings.menuReadyLine(minutes: row.durationSeconds.map { Int(($0 / 60).rounded()) })
+        case .interrupted: ViewFormat.friendlyError(row.error, strings: strings) ?? strings.errorInterrupted
+        case .failed: ViewFormat.friendlyError(row.error, strings: strings) ?? strings.stateFailed
         }
     }
 
