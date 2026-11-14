@@ -49,6 +49,14 @@ final class AppServices {
             startupError = nil
             model.observeQueue()
             Task { await model.recoverAtLaunch(database: database) }
+            // The recorder names a recording after the meeting in progress without waiting on the
+            // calendar, so the loaded meetings are kept fresh in the background.
+            Task {
+                while !Task.isCancelled {
+                    await workspaceModel.comingUp.reload()
+                    try? await Task.sleep(for: .seconds(300))
+                }
+            }
         } catch {
             recorder = nil
             workspace = nil
