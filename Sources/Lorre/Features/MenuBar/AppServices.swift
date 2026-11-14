@@ -48,7 +48,7 @@ final class AppServices {
             recorder = nil
             workspace = nil
             settings = nil
-            startupError = "Lorre could not open its database: \(error.localizedDescription)"
+            startupError = Strings.current.startupFailed
         }
     }
 

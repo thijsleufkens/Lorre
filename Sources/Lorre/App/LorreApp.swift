@@ -44,7 +44,7 @@ struct LorreApp: App {
             if let recorder = services.recorder {
                 MenuBarRecorderView(model: recorder)
             } else {
-                Text(services.startupError ?? "Recording is unavailable.")
+                Text(services.startupError ?? Strings.current.menuUnavailable)
                     .padding()
             }
         } label: {

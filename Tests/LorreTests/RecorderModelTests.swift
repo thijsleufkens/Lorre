@@ -78,7 +78,8 @@ final class RecorderModelTests: XCTestCase {
         let log = notifications!
         let model = RecorderModel(
             paths: paths, database: database, coordinator: coordinator, queue: queue,
-            defaults: defaults, notify: { title, _ in log.add(title) }
+            defaults: defaults, notify: { title, _ in log.add(title) },
+            strings: { .english }
         )
         return (model, queue)
     }
@@ -132,7 +133,7 @@ final class RecorderModelTests: XCTestCase {
         await model.refresh()
         XCTAssertEqual(model.rows.first?.status, .failed)
         XCTAssertEqual(model.rows.first?.error, "ASR failed")
-        XCTAssertEqual(notifications.titles, ["Transcription failed"])
+        XCTAssertEqual(notifications.titles, [Strings.english.notifyFailedTitle])
     }
 
     func testSuccessfulProcessingNotifies() async throws {
@@ -142,7 +143,7 @@ final class RecorderModelTests: XCTestCase {
         await model.stop()
         await queue.waitUntilIdle()
         try await Task.sleep(for: .milliseconds(100))
-        XCTAssertEqual(notifications.titles, ["Your conversation is ready"])
+        XCTAssertEqual(notifications.titles, [Strings.english.notifyReadyTitle])
     }
 
     func testSilentMicrophoneIsReportedWhileRecording() async throws {
@@ -151,8 +152,31 @@ final class RecorderModelTests: XCTestCase {
         await model.start()
         try await Task.sleep(for: .milliseconds(400))
         XCTAssertEqual(model.message, CaptureAdvice.silentMicrophone)
-        XCTAssertEqual(notifications.titles, ["No sound from the microphone"])
+        XCTAssertEqual(notifications.titles, [Strings.english.notifyNoSoundTitle])
         await model.stop()
+    }
+
+    func testNotificationsFollowTheLanguageAndHideRawErrors() async throws {
+        let store = self.store!
+        let queue = ProcessingQueue { id in
+            try store.setState(.processing, lastError: "ASR failed", for: id)
+            throw LorreError.processingFailed("ASR failed")
+        }
+        let bodies = NotificationLog()
+        let model = RecorderModel(
+            paths: paths, database: database,
+            coordinator: RecordingCoordinator(paths: paths, database: database, engine: engine),
+            queue: queue, defaults: defaults,
+            notify: { _, body in bodies.add(body) }, strings: { .dutch }
+        )
+        model.observeQueue()
+        await model.start()
+        await model.stop()
+        await queue.waitUntilIdle()
+        try await Task.sleep(for: .milliseconds(100))
+        XCTAssertEqual(bodies.titles.count, 1)
+        XCTAssertTrue(bodies.titles[0].hasSuffix(Strings.dutch.errorGeneric), bodies.titles[0])
+        XCTAssertFalse(bodies.titles[0].contains("ASR"))
     }
 
     func testSourceIsRemembered() {
@@ -190,7 +214,7 @@ final class RecorderModelTests: XCTestCase {
         XCTAssertEqual(report?.recovered, [abandoned.id])
         XCTAssertEqual(model.rows.first?.status, .ready)
         XCTAssertEqual(model.message?.contains("recovered"), true)
-        XCTAssertEqual(notifications.titles.first, "Recording recovered")
+        XCTAssertEqual(notifications.titles.first, Strings.english.notifyRecoveredTitle)
     }
 
     func testNothingToRecoverSaysNothing() async {

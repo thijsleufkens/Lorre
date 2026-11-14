@@ -177,6 +177,33 @@ struct Strings: Sendable {
     let saveAsPerson: String
     let unlinkPerson: String
 
+    // MARK: Menu bar
+    let menuSourceLabel: String
+    let menuSourceBoth: String
+    let menuSourceMicrophone: String
+    let menuSourceSystem: String
+    let menuStartRecording: String
+    let menuStopRecording: String
+    let menuConsentHint: String
+    let menuYou: String
+    let menuOthers: String
+    let menuRecent: String
+    let menuOpen: String
+    let menuOpenHelp: String
+    let menuOpenLorre: String
+    let menuQuit: String
+    let menuQuitHelp: String
+    let menuRowRecording: String
+    let menuRowWaiting: String
+    let menuRowProcessing: String
+    let menuRowReady: String
+    let menuUnavailable: String
+    let startupFailed: String
+    let notifyRecoveredTitle: String
+    let notifyFailedTitle: String
+    let notifyReadyTitle: String
+    let notifyNoSoundTitle: String
+
     // MARK: Units
     let hourUnit: String
     let minuteUnit: String
@@ -414,6 +441,38 @@ struct Strings: Sendable {
         saveAsPerson = t("Bewaar als persoon", "Save as person")
         unlinkPerson = t("Koppeling verwijderen", "Remove link")
 
+        menuSourceLabel = t("Wat neem je op?", "What do you record?")
+        menuSourceBoth = t("Microfoon en geluid van de computer", "Microphone and computer sound")
+        menuSourceMicrophone = t("Alleen de microfoon", "Microphone only")
+        menuSourceSystem = t("Alleen geluid van de computer", "Computer sound only")
+        menuStartRecording = t("Opname starten", "Start recording")
+        menuStopRecording = t("Opname stoppen", "Stop recording")
+        menuConsentHint = t(
+            "Laat de ander weten dat het gesprek wordt opgenomen.",
+            "Let the other person know the conversation is being recorded."
+        )
+        menuYou = t("Jij", "You")
+        menuOthers = t("De anderen", "Others")
+        menuRecent = t("Recent", "Recent")
+        menuOpen = t("Openen", "Open")
+        menuOpenHelp = t("Open het uitgewerkte gesprek", "Open the written-out conversation")
+        menuOpenLorre = t("Lorre openen", "Open Lorre")
+        menuQuit = t("Afsluiten", "Quit")
+        menuQuitHelp = t("Stop eerst de opname.", "Stop the recording first.")
+        menuRowRecording = t("Wordt opgenomen…", "Recording…")
+        menuRowWaiting = t("Wacht om uitgewerkt te worden", "Waiting to be written out")
+        menuRowProcessing = t("Wordt uitgewerkt…", "Being written out…")
+        menuRowReady = t("Klaar", "Ready")
+        menuUnavailable = t("Opnemen is nu niet beschikbaar.", "Recording is not available right now.")
+        startupFailed = t(
+            "Lorre kan je gesprekken nu niet openen. Sluit Lorre af en open het opnieuw. Blijft dit gebeuren, start dan je Mac opnieuw op.",
+            "Lorre cannot open your conversations right now. Quit Lorre and open it again. If this keeps happening, restart your Mac."
+        )
+        notifyRecoveredTitle = t("Opname teruggevonden", "Recording found again")
+        notifyFailedTitle = t("Uitwerken is niet gelukt", "Writing it out did not work")
+        notifyReadyTitle = t("Je gesprek is klaar", "Your conversation is ready")
+        notifyNoSoundTitle = t("Geen geluid van de microfoon", "No sound from the microphone")
+
         hourUnit = t("u", "h")
         minuteUnit = t("min", "min")
         lessThanAMinute = t("< 1 min", "< 1 min")
@@ -531,6 +590,20 @@ struct Strings: Sendable {
         switch language {
         case .dutch: "Bekijk \(name)"
         case .english: "View \(name)"
+        }
+    }
+
+    /// The status of a finished conversation in the menu bar, for example "Klaar · 12 min".
+    func menuReadyLine(minutes: Int?) -> String {
+        guard let minutes else { return menuRowReady }
+        return "\(menuRowReady) · \(minutes) \(minuteUnit)"
+    }
+
+    /// Spoken by VoiceOver next to the running clock.
+    func menuElapsedLabel(_ clock: String) -> String {
+        switch language {
+        case .dutch: "Opgenomen: \(clock)"
+        case .english: "Recorded: \(clock)"
         }
     }
 
