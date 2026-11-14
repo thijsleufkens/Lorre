@@ -39,7 +39,7 @@ PATH=/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolch
 | Test one | `swift test --filter <TestClassName>` or `swift test --filter <TestClassName>.<methodName>` |
 | Package `.app` | `./scripts/package_macos_app.sh release` → `dist/Lorre.app` |
 | CI parity | `./scripts/ci_check.sh` |
-| Install built app | `rm -rf /Applications/Lorre.app && cp -R dist/Lorre.app /Applications/` |
+| Install built app | `rm -rf /Applications/Lorre.app && ditto --noextattr --norsrc dist/Lorre.app /Applications/Lorre.app` (plain `cp -R` carries cloud-sync attributes along and breaks the signature) |
 | Transcribe headless | `dist/Lorre.app/Contents/MacOS/Lorre transcribe <file> [--register]` |
 
 All `swift` invocations need Xcode's toolchain as described above. `scripts/swift_test.sh` is a thin wrapper.

@@ -14,7 +14,11 @@ BUILD_NUMBER="${LORRE_BUILD:-$BUILD_NUMBER}"
 
 CONFIGURATION="debug" # debug | release
 SKIP_BUILD="0"
-DIST_DIR="$ROOT_DIR/dist"
+FINAL_DIST_DIR="$ROOT_DIR/dist"
+# The bundle is put together and signed in a temporary folder: a cloud-synced project folder
+# (Dropbox, iCloud) adds file attributes that make codesign reject the bundle.
+DIST_DIR="$(mktemp -d "${TMPDIR:-/tmp}/lorre-package.XXXXXX")"
+trap 'rm -rf "$DIST_DIR"' EXIT
 APP_BUNDLE="$DIST_DIR/${APP_NAME}.app"
 CONTENTS_DIR="$APP_BUNDLE/Contents"
 MACOS_DIR="$CONTENTS_DIR/MacOS"
@@ -177,6 +181,11 @@ codesign --force --sign "$SIGN_IDENTITY" --entitlements "$ENTITLEMENTS_PATH" "$A
 codesign --verify --deep --strict "$APP_BUNDLE"
 codesign -d -r- "$APP_BUNDLE" 2>&1 | grep 'designated' || true
 
-echo "Created: $APP_BUNDLE"
-echo "Binary:  $MACOS_DIR/$APP_NAME"
-echo "Icon:    $RESOURCES_DIR/$APP_NAME.icns"
+mkdir -p "$FINAL_DIST_DIR"
+rm -rf "$FINAL_DIST_DIR/${APP_NAME}.app"
+ditto --noextattr --norsrc "$APP_BUNDLE" "$FINAL_DIST_DIR/${APP_NAME}.app"
+cp "$ENTITLEMENTS_PATH" "$FINAL_DIST_DIR/"
+
+echo "Created: $FINAL_DIST_DIR/${APP_NAME}.app"
+echo "Binary:  $FINAL_DIST_DIR/${APP_NAME}.app/Contents/MacOS/$APP_NAME"
+echo "Install: ditto --noextattr --norsrc \"$FINAL_DIST_DIR/${APP_NAME}.app\" /Applications/${APP_NAME}.app"

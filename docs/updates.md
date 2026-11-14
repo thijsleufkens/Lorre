@@ -91,11 +91,11 @@ It uploads nothing. At the end it prints the two files to publish: attach the zi
 Keep earlier zips in `dist/release/` so the appcast keeps their entries (`dist/` is git-ignored). The script
 stops with a message when a variable or Sparkle's tool is missing.
 
-**Cloud-synced folders.** If the repository lives in Dropbox or iCloud, the sync client keeps adding
-Finder attributes to folders inside `dist/Lorre.app` after signing, and `codesign --verify` can then fail with
-"resource fork, Finder information, or similar detritus". The script clears the attributes right before
-signing, so the signature itself is fine, but for a release it is safer to build from a checkout outside a
-synced folder. The zip made by `ditto` is not affected.
+**Cloud-synced folders.** If the repository lives in Dropbox or iCloud, the sync client adds file
+attributes that make `codesign` reject the bundle ("resource fork, Finder information, or similar
+detritus"). The package script therefore puts the bundle together and signs it in a temporary folder and
+copies the result to `dist/` without attributes; the release zip is made without them too. Install a build
+with `ditto --noextattr --norsrc dist/Lorre.app /Applications/Lorre.app`, not with `cp -R`.
 
 ## What a user sees
 

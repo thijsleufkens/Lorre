@@ -32,7 +32,7 @@ fi
 mkdir -p "$RELEASE_DIR"
 ZIP="$RELEASE_DIR/Lorre-$VERSION.zip"
 rm -f "$ZIP"
-ditto -c -k --keepParent "$ROOT_DIR/dist/Lorre.app" "$ZIP"
+ditto -c -k --keepParent --noextattr --norsrc "$ROOT_DIR/dist/Lorre.app" "$ZIP"
 
 # generate_appcast signs each zip with the private key in the login keychain and creates or extends
 # appcast.xml next to the zips. Keep older zips in this folder so the appcast keeps their entries.
