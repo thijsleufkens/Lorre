@@ -5,8 +5,9 @@ import LorreCore
 /// Runs the existing speech pipeline on a recorded conversation and stores the result in the
 /// conversation database.
 ///
-/// Temporary: it transcribes the mix, like the old app. Per-track processing replaces it. It works
-/// through a throwaway `FileSessionStore`, the same way `transcribe` does, so the old pipeline is
+/// A conversation with a readable microphone track and a readable system track is processed per
+/// track (see `PerTrackTranscript`); anything else is transcribed as one mix, like the old app.
+/// It works through a throwaway `FileSessionStore`, the same way `transcribe` does, so the old pipeline is
 /// used unchanged.
 ///
 /// Rule: a failure never removes or rewrites a track. The conversation stays `processing` with
@@ -22,6 +23,9 @@ struct ConversationProcessor: Sendable {
         var writesDraftRecord = true
         /// Where the draft record goes; nil uses the export folder from the settings.
         var recordFolder: URL?
+        /// Transcribe the microphone and system tracks separately when a conversation has both.
+        /// Off: always work on the mix, like before.
+        var perTrack = true
 
         init() {}
 
@@ -40,7 +44,7 @@ struct ConversationProcessor: Sendable {
     let transcription: any TranscriptionService
     let diarization: any SpeakerDiarizationService
 
-    private var store: ConversationStore { ConversationStore(database: database) }
+    var store: ConversationStore { ConversationStore(database: database) }
 
     /// Where the readable transcript of a conversation is written.
     static func transcriptURL(for conversationId: UUID, tracks: [Track], paths: LorrePaths) -> URL {
@@ -92,8 +96,42 @@ struct ConversationProcessor: Sendable {
         onProgress: @escaping @Sendable (ProcessingUpdate) async -> Void
     ) async throws -> Int {
         let tracks = try store.tracks(conversationId: conversation.id)
-        let input = try prepareInput(for: conversation, tracks: tracks)
 
+        if options.perTrack, let pair = PerTrackTranscript.eligibleTracks(tracks: tracks, paths: paths) {
+            do {
+                return try await transcribePerTrack(
+                    conversation, tracks: tracks, microphone: pair.microphone, system: pair.system,
+                    options: options, onProgress: onProgress
+                )
+            } catch is CancellationError {
+                throw CancellationError()
+            } catch {
+                // Fall back to the mix; only a failure there is recorded.
+            }
+        }
+
+        let input = try prepareInput(for: conversation, tracks: tracks)
+        let (transcript, manifest) = try await runPipeline(
+            on: input,
+            conversation: conversation,
+            source: Self.recordingSource(for: conversation.captureSource),
+            enableDiarization: options.enableDiarization,
+            options: options,
+            onProgress: onProgress
+        )
+        return try await persist(transcript, manifest: manifest, conversation: conversation, tracks: tracks, options: options)
+    }
+
+    /// Runs the existing pipeline on one audio file through a throwaway session store. The result
+    /// carries the conversation's identity, not the scratch session's.
+    private func runPipeline(
+        on input: URL,
+        conversation: Conversation,
+        source: RecordingSource,
+        enableDiarization: Bool,
+        options: Options,
+        onProgress: @escaping @Sendable (ProcessingUpdate) async -> Void
+    ) async throws -> (TranscriptDocument, SessionManifest) {
         let base = FileManager.default.temporaryDirectory
             .appendingPathComponent("lorre-process-\(UUID().uuidString)", isDirectory: true)
         defer { try? FileManager.default.removeItem(at: base) }
@@ -104,7 +142,7 @@ struct ConversationProcessor: Sendable {
             folderId: nil,
             status: .processing,
             durationSeconds: conversation.durationSeconds,
-            recordingSource: Self.recordingSource(for: conversation.captureSource),
+            recordingSource: source,
             audioFileName: "audio.m4a",
             microphoneStemFileName: nil,
             systemAudioStemFileName: nil,
@@ -123,7 +161,7 @@ struct ConversationProcessor: Sendable {
             diarizationService: diarization
         ).process(
             sessionId: session.id,
-            enableDiarization: options.enableDiarization,
+            enableDiarization: enableDiarization,
             diarizationExpectedSpeakers: options.diarizationExpectedSpeakers,
             exportDiarizationDebugArtifact: false,
             deleteAudioAfterTranscription: false,
@@ -131,14 +169,24 @@ struct ConversationProcessor: Sendable {
             onProgress: onProgress
         )
 
-        // From here on the result carries the conversation's identity, not the scratch session's.
         var manifest = (try? await scratch.loadSession(id: session.id)) ?? session
         manifest.id = conversation.id
         manifest.title = conversation.title
         manifest.recordedAt = conversation.startedAt
         manifest.durationSeconds = conversation.durationSeconds ?? manifest.durationSeconds
         transcript.sessionId = conversation.id
+        return (transcript, manifest)
+    }
 
+    /// Stores the transcript as the current version and writes `transcript.md` and the automatic
+    /// export. Returns the number of segments.
+    private func persist(
+        _ transcript: TranscriptDocument,
+        manifest: SessionManifest,
+        conversation: Conversation,
+        tracks: [Track],
+        options: Options
+    ) async throws -> Int {
         let encoder = JSONEncoder()
         encoder.dateEncodingStrategy = .iso8601
         let segmentCount = try store.saveTranscript(
@@ -162,36 +210,74 @@ struct ConversationProcessor: Sendable {
         return segmentCount
     }
 
+    /// Microphone and system track transcribed apart and merged. Nothing is stored until both
+    /// passes have succeeded, so a failure leaves the conversation as it was.
+    private func transcribePerTrack(
+        _ conversation: Conversation,
+        tracks: [Track],
+        microphone: URL,
+        system: URL,
+        options: Options,
+        onProgress: @escaping @Sendable (ProcessingUpdate) async -> Void
+    ) async throws -> Int {
+        // The mix is only for playback; failing to make it does not matter here.
+        if Self.trackURL(.mix, in: tracks, paths: paths) == nil,
+           (try? buildMix(for: conversation, microphone: microphone, system: system)) != nil {
+            try? store.saveTracks([Track(
+                conversationId: conversation.id,
+                kind: .mix,
+                relativePath: paths.relativeTrackPath(conversation.id, fileName: TrackKind.mix.fileName)
+            )])
+        }
+
+        let micStep: @Sendable (ProcessingUpdate) async -> Void = { update in
+            await onProgress(PerTrackTranscript.scale(update, into: 0...0.35))
+        }
+        let systemStep: @Sendable (ProcessingUpdate) async -> Void = { update in
+            await onProgress(PerTrackTranscript.scale(update, into: 0.35...1))
+        }
+        let (micTranscript, micManifest) = try await runPipeline(
+            on: microphone, conversation: conversation, source: .microphone,
+            enableDiarization: false, options: options, onProgress: micStep
+        )
+        let (systemTranscript, _) = try await runPipeline(
+            on: system, conversation: conversation, source: .systemAudio,
+            enableDiarization: options.enableDiarization, options: options, onProgress: systemStep
+        )
+
+        let language = LorreLanguage.current
+        let configuredName = (try? SettingsStore(database: database).string(.userName)) ?? nil
+        let user = try PerTrackTranscript.ensureUserParticipant(
+            conversationId: conversation.id,
+            configuredName: configuredName,
+            language: language,
+            store: store
+        )
+        let merged = PerTrackTranscript.merge(
+            microphone: micTranscript,
+            system: systemTranscript,
+            conversationId: conversation.id,
+            user: user,
+            language: language
+        )
+
+        var manifest = micManifest
+        manifest.recordingSource = .microphoneAndSystemAudio
+        return try await persist(merged, manifest: manifest, conversation: conversation, tracks: tracks, options: options)
+    }
+
     /// The audio file to transcribe: an existing mix, a fresh mix of microphone and system audio,
     /// or the only track there is.
     private func prepareInput(for conversation: Conversation, tracks: [Track]) throws -> URL {
-        func url(_ kind: TrackKind) -> URL? {
-            guard let track = tracks.first(where: { $0.kind == kind }) else { return nil }
-            let url = paths.root.appendingPathComponent(track.relativePath)
-            let size = (try? url.resourceValues(forKeys: [.fileSizeKey]).fileSize) ?? 0
-            return size > 0 ? url : nil
-        }
-
-        if let mix = url(.mix) { return mix }
-        let microphone = url(.microphone)
-        let system = url(.system)
+        if let mix = Self.trackURL(.mix, in: tracks, paths: paths) { return mix }
+        let microphone = Self.trackURL(.microphone, in: tracks, paths: paths)
+        let system = Self.trackURL(.system, in: tracks, paths: paths)
 
         if let microphone, let system {
-            let folder = Self.folder(for: conversation.id, tracks: tracks, paths: paths)
-            try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
-            let destination = folder.appendingPathComponent(TrackKind.mix.fileName)
-            // Written next to the tracks under a temporary name first, so a failed mix leaves no
-            // half-written file that would later be mistaken for the real one.
-            let partial = folder.appendingPathComponent("mix.partial.caf")
-            try? FileManager.default.removeItem(at: partial)
+            let destination: URL
             do {
-                try RecorderAudioUtilities.mixToCanonicalFile(
-                    microphoneURL: microphone, systemAudioURL: system, destinationURL: partial
-                )
-                try? FileManager.default.removeItem(at: destination)
-                try FileManager.default.moveItem(at: partial, to: destination)
+                destination = try buildMix(for: conversation, microphone: microphone, system: system)
             } catch {
-                try? FileManager.default.removeItem(at: partial)
                 // One track may be damaged (an interrupted recording). The other is still worth
                 // transcribing; prefer the longer one.
                 let candidates = [microphone, system].map { ($0, RecordingRecovery.trackDuration($0) ?? 0) }
@@ -207,6 +293,36 @@ struct ConversationProcessor: Sendable {
         }
         if let only = microphone ?? system { return only }
         throw LorreError.processingFailed("There is no audio to transcribe for this conversation.")
+    }
+
+    /// The file of a track when it exists and is not empty.
+    static func trackURL(_ kind: TrackKind, in tracks: [Track], paths: LorrePaths) -> URL? {
+        guard let track = tracks.first(where: { $0.kind == kind }) else { return nil }
+        let url = paths.root.appendingPathComponent(track.relativePath)
+        let size = (try? url.resourceValues(forKeys: [.fileSizeKey]).fileSize) ?? 0
+        return size > 0 ? url : nil
+    }
+
+    /// Writes `mix.caf` next to the tracks and returns it. The caller registers the track.
+    private func buildMix(for conversation: Conversation, microphone: URL, system: URL) throws -> URL {
+        let folder = paths.conversationFolder(conversation.id)
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        let destination = folder.appendingPathComponent(TrackKind.mix.fileName)
+        // Written next to the tracks under a temporary name first, so a failed mix leaves no
+        // half-written file that would later be mistaken for the real one.
+        let partial = folder.appendingPathComponent("mix.partial.caf")
+        try? FileManager.default.removeItem(at: partial)
+        do {
+            try RecorderAudioUtilities.mixToCanonicalFile(
+                microphoneURL: microphone, systemAudioURL: system, destinationURL: partial
+            )
+            try? FileManager.default.removeItem(at: destination)
+            try FileManager.default.moveItem(at: partial, to: destination)
+        } catch {
+            try? FileManager.default.removeItem(at: partial)
+            throw error
+        }
+        return destination
     }
 
     private static func recordingSource(for source: CaptureSource?) -> RecordingSource {
