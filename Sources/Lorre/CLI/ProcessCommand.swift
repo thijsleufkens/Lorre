@@ -16,6 +16,9 @@ struct ProcessCommand: AsyncParsableCommand {
     @Flag(help: "Do not write the automatic export, even when it is enabled in the settings.")
     var noExport: Bool = false
 
+    @Flag(help: "Transcribe the mix instead of the microphone and system tracks separately.")
+    var mixOnly: Bool = false
+
     @Flag(help: "Suppress progress output on stderr.")
     var quiet: Bool = false
 
@@ -38,6 +41,7 @@ struct ProcessCommand: AsyncParsableCommand {
         )
         var options = ConversationProcessor.Options(settings: settings)
         if noExport { options.automaticExport = nil }
+        if mixOnly { options.perTrack = false }
         let processed = try await processor.process(
             conversation.id,
             options: options,
