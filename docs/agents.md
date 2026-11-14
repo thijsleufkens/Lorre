@@ -93,3 +93,19 @@ Lorre records --new --consumer todo-agent --status approved
 Lorre record 3F2A9C10 --markdown
 Lorre mark-processed 3F2A9C10 --consumer todo-agent
 ```
+
+## Ready-made setup for Claude Code
+
+Two files in this repository save the setup work:
+
+- **`.mcp.json`** connects the Lorre MCP server for sessions started in this repository. To have it in
+  every session, add it to your own account instead:
+  `claude mcp add --scope user lorre -- /Applications/Lorre.app/Contents/MacOS/Lorre mcp`
+- **`.claude/skills/verwerk-lorre/`** is a skill that files what is new: it asks Lorre for approved
+  records it has not handled, turns decisions and notes into memories and actions into tasks in the
+  memory store of the session (written with Postgram in mind, usable with any store that has search,
+  store and task tools), and marks each record as processed. It works in this repository as it is. To
+  use it everywhere, copy the folder to `~/.claude/skills/verwerk-lorre/`. Then say "verwerk Lorre".
+
+The skill uses the consumer name `verwerk-lorre`. Another agent with another consumer name sees the same
+records as new, independently.

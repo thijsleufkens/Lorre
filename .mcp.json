@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "lorre": {
+      "command": "/Applications/Lorre.app/Contents/MacOS/Lorre",
+      "args": ["mcp"]
+    }
+  }
+}
