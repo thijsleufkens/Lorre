@@ -53,6 +53,7 @@ struct Strings: Sendable {
     let notReadyHelp: String
     let todayWord: String
     let yesterdayWord: String
+    let tomorrowWord: String
 
     // MARK: Review: header
     let back: String
@@ -263,6 +264,7 @@ struct Strings: Sendable {
         notReadyHelp = t("Dit gesprek is nog niet uitgewerkt", "This conversation is not transcribed yet")
         todayWord = t("vandaag", "today")
         yesterdayWord = t("gisteren", "yesterday")
+        tomorrowWord = t("morgen", "tomorrow")
 
         back = t("Terug", "Back")
         backHelp = t("Terug naar het overzicht", "Back to the overview")
