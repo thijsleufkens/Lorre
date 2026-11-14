@@ -293,4 +293,22 @@ final class TwoStepOutcomeProposerTests: XCTestCase {
     func testIdentifierNamesTheGenerator() {
         XCTAssertEqual(TwoStepOutcomeProposer(generator: FakeTextGenerator { _, _, _ in "" }).identifier, "two-step/fake:model")
     }
+
+    func testAConsolidationThatLumpsEverythingTogetherIsDistrusted() {
+        let version = UUID()
+        let segments = (0..<5).map {
+            Segment(transcriptVersionId: version, participantId: nil, startMs: $0 * 1000, endMs: $0 * 1000 + 900, text: "x")
+        }
+        let candidates = segments.enumerated().map { index, segment in
+            TwoStepOutcomeProposer.Candidate(
+                kind: .openPoint, text: "Punt \(index)", ownerName: nil, segmentIds: [segment.id], order: index
+            )
+        }
+        let lumped = #"{"items":[{"kind":"openPoint","summary":"Alles.","candidates":[1,2,3,4,5]}]}"#
+        XCTAssertNil(TwoStepOutcomeProposer.parseConsolidation(lumped, candidates: candidates, segments: segments))
+        let merged = #"{"items":[{"kind":"openPoint","summary":"Twee samen.","candidates":[1,2]}]}"#
+        XCTAssertEqual(
+            TwoStepOutcomeProposer.parseConsolidation(merged, candidates: candidates, segments: segments)?.count, 1
+        )
+    }
 }

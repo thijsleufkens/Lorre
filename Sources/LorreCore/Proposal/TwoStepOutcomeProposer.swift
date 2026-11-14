@@ -183,6 +183,8 @@ public struct TwoStepOutcomeProposer: OutcomeProposer {
         return Self.parseConsolidation(answer, candidates: candidates, segments: input.segments)
     }
 
+    static let maxMergedCandidates = 3
+
     static func parseConsolidation(_ answer: String, candidates: [Candidate], segments: [Segment]) -> [Candidate]? {
         guard let items = ProposalParsing.items(from: ProposalParsing.jsonValue(in: answer)) else { return nil }
         let position = Dictionary(uniqueKeysWithValues: segments.enumerated().map { ($1.id, $0) })
@@ -193,6 +195,9 @@ public struct TwoStepOutcomeProposer: OutcomeProposer {
                 .filter { $0 >= 1 && $0 <= candidates.count }
                 .sorted()
             guard !numbers.isEmpty else { continue }
+            // Small models sometimes pour every candidate of a kind into one item. That is not
+            // a merge of duplicates, so the whole answer is distrusted.
+            guard numbers.count <= Self.maxMergedCandidates else { return nil }
             let sources = numbers.map { candidates[$0 - 1] }
             let ids = Set(sources.flatMap(\.segmentIds))
                 .sorted { (position[$0] ?? 0) < (position[$1] ?? 0) }
