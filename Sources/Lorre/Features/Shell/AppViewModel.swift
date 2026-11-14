@@ -140,8 +140,6 @@ final class AppViewModel: ObservableObject {
         await dependencies.metrics.log(name: "app_opened", attributes: ["fluid_audio": fluidAudioStatus])
     }
 
-    var filteredSessions: [SessionManifest] { cachedFilteredSessions }
-
     var modelRegistrySummaryLabel: String {
         currentModelRegistryConfiguration().summaryLabel
     }
@@ -167,117 +165,11 @@ final class AppViewModel: ObservableObject {
         isRecording || isStoppingRecording
     }
 
-    var isBrowsingArchivedSessionWhileRecording: Bool {
-        hasActiveRecording && selectedSession != nil
-    }
-
-    var workStageRoute: WorkStageRoute {
-        Self.makeWorkStageRoute(selectedSession: selectedSession)
-    }
-
-    var recorderShelfActionLabel: String {
-        if hasActiveRecording {
-            return selectedSession == nil ? "Recorder Open" : "Open Recorder"
-        }
-        if isStartingRecording {
-            return "Starting…"
-        }
-        return "New Recording"
-    }
-
-    var activeRecordingHeadline: String {
-        if isStoppingRecording {
-            return "Finalizing active recording"
-        }
-        return "Active recording"
-    }
-
-    var activeRecordingDetail: String {
-        if isStoppingRecording {
-            return "Lorre is closing the capture and preparing a new session."
-        }
-        if selectedSession != nil {
-            return "Capture stays live while you review archived recordings or export finished transcripts."
-        }
-        return "Capture is live. You can open older recordings without stopping."
-    }
-
-    var activeRecordingSourceBadge: String {
-        selectedRecordingSource.shortLabel.uppercased()
-    }
-
-    var hasReadyTranscriptStage: Bool {
-        if let session = selectedSession {
-            return session.status == .ready || session.status == .error
-        }
-        return false
-    }
-
-    var visibleStageTitle: String {
-        if hasActiveRecording && selectedSession == nil { return "Recorder" }
-        if let session = selectedSession { return session.displayTitle }
-        return "Recorder"
-    }
-
-    var visibleStageStatusLine: String {
-        if isStartingRecording {
-            return "Starting capture…"
-        }
-        if isRecording {
-            return "Recording live • audio is stored locally"
-        }
-        if isStoppingRecording {
-            return "Stopping capture and preparing session…"
-        }
-        if let session = selectedSession {
-            if session.status == .processing {
-                return session.processing.progressLabel ?? "Processing"
-            }
-            if session.status == .error {
-                return session.lastErrorMessage ?? "Processing failed"
-            }
-            if session.status == .ready {
-                if !session.hasRetainedAudio {
-                    return "Transcript ready • source audio deleted for privacy"
-                }
-                return activeTranscript?.segments.isEmpty == false
-                    ? "Transcript ready for review"
-                    : "Session ready"
-            }
-            return session.status.label
-        }
-        return recorderStatusText
-    }
-
     var canControlPlayback: Bool {
         guard !isStartingRecording, !isRecording, !isStoppingRecording else { return false }
         guard let session = selectedSession else { return false }
         guard session.hasRetainedAudio else { return false }
         return session.status == .ready || session.status == .error
-    }
-
-    var playbackProgressFraction: Double {
-        guard playbackDurationSeconds > 0 else { return 0 }
-        return min(max(playbackCurrentSeconds / playbackDurationSeconds, 0), 1)
-    }
-
-    var playbackTimeLine: String {
-        let current = Formatters.duration(playbackCurrentSeconds)
-        let total = Formatters.duration(playbackDurationSeconds)
-        return "\(current) / \(total)"
-    }
-
-    var playbackRateLabel: String {
-        switch playbackRate {
-        case 0.75:
-            return "0.75x"
-        case 1.25:
-            return "1.25x"
-        case 1.5:
-            return "1.5x"
-        default:
-            return "1.0x"
-        }
     }
 
     static func makeWorkStageRoute(selectedSession: SessionManifest?) -> WorkStageRoute {
@@ -325,143 +217,9 @@ final class AppViewModel: ObservableObject {
         cachedViewCounts[filter] ?? 0
     }
 
-    func countForFolder(_ folderID: String?) -> Int {
-        sessionsForFolderBrowser(folderID).count
-    }
-
     func folderName(for folderID: String?) -> String {
         guard let folderID else { return "Unfiled" }
         return folders.first(where: { $0.id == folderID })?.name ?? folderID
-    }
-
-    func sessionsForFolderBrowser(_ folderID: String?) -> [SessionManifest] {
-        guard let folderID else { return cachedAllFolderBrowserSessions }
-        return cachedFolderBrowserSessions[folderID] ?? []
-    }
-
-    func sessionsForViewBrowser(_ filter: ShelfFilter) -> [SessionManifest] {
-        cachedViewBrowserSessions[filter] ?? []
-    }
-
-    func toggleSidebarViewExpansion(_ filter: ShelfFilter) {
-        if expandedViewFilters.contains(filter) {
-            expandedViewFilters.remove(filter)
-        } else {
-            expandedViewFilters.insert(filter)
-        }
-        persistSidebarExpansionState()
-    }
-
-    func toggleSidebarFolderExpansion(_ folderID: String) {
-        if expandedFolderIDs.contains(folderID) {
-            expandedFolderIDs.remove(folderID)
-        } else {
-            expandedFolderIDs.insert(folderID)
-        }
-        persistSidebarExpansionState()
-    }
-
-    func selectFolderFilter(_ folderID: String?) {
-        // "Open folder" should feel deterministic: show the folder contents, not a stale
-        // status/search-filtered view from a previous shelf state.
-        if !searchQuery.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-            searchQuery = ""
-        }
-        selectedFilter = .all
-        selectedFolderID = folderID
-
-        let sessionsInFolder = sessions.filter { session in
-            if let folderID {
-                if folderID == Self.unfiledFolderSelectionID {
-                    return session.folderId == nil
-                }
-                return session.folderId == folderID
-            }
-            return true
-        }
-
-        if let current = selectedSession, sessionsInFolder.contains(where: { $0.id == current.id }) {
-            return
-        }
-        // Folder selection should reveal the list, not force-open a recording.
-        selectSession(nil)
-    }
-
-    func openFolderForSelectedSession() {
-        guard let session = selectedSession else { return }
-        let targetFolderID = session.folderId ?? Self.unfiledFolderSelectionID
-        selectFolderFilter(targetFolderID)
-        banner = nil
-        exportMessage = nil
-
-        Task { [dependencies] in
-            await dependencies.metrics.log(
-                name: "folder_opened_from_session",
-                sessionId: session.id,
-                attributes: ["folder_id": targetFolderID]
-            )
-        }
-    }
-
-    func moveSession(_ sessionID: UUID, to folderID: String?) {
-        guard var session = sessions.first(where: { $0.id == sessionID }) else { return }
-        guard session.folderId != folderID else { return }
-
-        Task { [weak self] in
-            guard let self else { return }
-            do {
-                session.folderId = folderID
-                session.updatedAt = Date()
-                try await self.dependencies.store.updateSession(session)
-                await self.reloadSessions(selectMostRecentIfNeeded: false)
-                await MainActor.run {
-                    if self.selectedSessionID == session.id {
-                        self.selectedSessionID = session.id
-                    }
-                    let label = self.folderName(for: folderID)
-                    self.banner = AppBanner(kind: .success, title: "Moved to folder", message: "\(session.displayTitle) → \(label)")
-                }
-                await self.dependencies.metrics.log(
-                    name: "session_moved_to_folder",
-                    sessionId: session.id,
-                    attributes: ["folder_id": folderID ?? "unfiled"]
-                )
-            } catch {
-                await MainActor.run {
-                    self.presentError(error, defaultTitle: "Move to folder failed")
-                }
-                await self.dependencies.metrics.log(
-                    name: "session_move_to_folder_failed",
-                    sessionId: session.id,
-                    attributes: ["error": error.localizedDescription]
-                )
-            }
-        }
-    }
-
-    func selectSession(_ session: SessionManifest?) {
-        stopPlaybackAndResetState()
-        liveTranscriptPreview = nil
-        selectedSessionID = session?.id
-        banner = nil
-        exportMessage = nil
-        startWaveformLoading(for: session)
-        if let session {
-            Task { [dependencies] in
-                await dependencies.metrics.log(
-                    name: "session_opened",
-                    sessionId: session.id,
-                    attributes: ["status": session.status.rawValue]
-                )
-            }
-        }
-        Task {
-            await loadTranscriptForSelectedSession()
-        }
-    }
-
-    func showRecorderScreenTapped() {
-        selectSession(nil)
     }
 
     func startRecordingTapped() {
@@ -945,11 +703,6 @@ final class AppViewModel: ObservableObject {
                 }
             }
         }
-    }
-
-    func moveSelectedSessionToFolder(_ folderID: String?) {
-        guard let sessionID = selectedSession?.id else { return }
-        moveSession(sessionID, to: folderID)
     }
 
     func renameSelectedSession(to newName: String) {
