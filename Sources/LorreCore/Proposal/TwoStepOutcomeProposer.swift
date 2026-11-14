@@ -76,9 +76,27 @@ public struct TwoStepOutcomeProposer: OutcomeProposer {
             return ProposedOutcome(
                 kind: candidate.kind,
                 text: candidate.text,
-                ownerParticipantId: candidate.kind.hasOwner ? matcher.match(candidate.ownerName) : nil,
+                ownerParticipantId: Self.owner(of: candidate, matcher: matcher, participants: input.participants),
                 evidenceSegmentIds: candidate.segmentIds
             )
+        }
+    }
+
+    /// The owner the model named, with two safe fallbacks: my action is mine, and somebody
+    /// else's commitment belongs to the other person when there is only one.
+    static func owner(of candidate: Candidate, matcher: ParticipantMatcher, participants: [Participant]) -> UUID? {
+        guard candidate.kind.hasOwner else { return nil }
+        let user = participants.first(where: \.isUser)
+        let named = matcher.match(candidate.ownerName)
+        switch candidate.kind {
+        case .myAction:
+            return user?.id ?? named
+        case .theirCommitment:
+            if let named, named != user?.id { return named }
+            let others = participants.filter { !$0.isUser }
+            return others.count == 1 ? others[0].id : nil
+        default:
+            return named
         }
     }
 
@@ -107,7 +125,9 @@ public struct TwoStepOutcomeProposer: OutcomeProposer {
             return language == .dutch
                 ? "\(participant.name) (de gebruiker; \"ik\" in het gesprek)"
                 : "\(participant.name) (the user; \"I\" in the conversation)"
-        }.joined(separator: ", ")
+        }.joined(separator: ", ") + (language == .dutch
+            ? ". Gebruik in je zinnen precies deze namen; schrijf nooit \"de gebruiker\" en vertaal de namen niet"
+            : ". Use exactly these names in your sentences; never write \"the user\" and do not translate the names")
     }
 
     // MARK: Step 1 parsing

@@ -101,7 +101,7 @@ final class ReviewModel {
         do {
             let store = ConversationStore(database: database)
             conversation = try store.conversation(id: conversationID)
-            participants = try store.participants(conversationId: conversationID)
+            participants = try store.activeParticipants(conversationId: conversationID)
             segments = try store.currentSegments(conversationId: conversationID)
             outcomes = try review.outcomes(conversationId: conversationID, includingRejected: false)
             audioURL = AudioLocator.playableURL(tracks: try store.tracks(conversationId: conversationID), paths: paths)

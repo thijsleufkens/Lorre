@@ -10,6 +10,8 @@ public struct SettingsStore: Sendable {
         case userName
         /// Whether the audio of a conversation is removed once it has been approved.
         case deleteAudioAfterApproval
+        /// Name of the local model that proposes outcomes; empty or missing means no proposals.
+        case proposalModel
     }
 
     let database: LorreDatabase

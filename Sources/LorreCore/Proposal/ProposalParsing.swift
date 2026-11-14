@@ -109,7 +109,13 @@ struct ParticipantMatcher {
         if Self.userAliases.contains(wanted) {
             return participants.first(where: \.isUser)?.id
         }
-        if let exact = participants.first(where: { ProposalParsing.fold($0.name) == wanted }) { return exact.id }
+        // Models like to translate the placeholder names.
+        let swapped = wanted.hasPrefix("speaker ") ? "spreker " + wanted.dropFirst(8)
+            : wanted.hasPrefix("spreker ") ? "speaker " + wanted.dropFirst(8) : wanted
+        if let exact = participants.first(where: {
+            let name = ProposalParsing.fold($0.name)
+            return name == wanted || name == swapped
+        }) { return exact.id }
         // A first name is enough, as long as it points at one person.
         let byFirstName = participants.filter { ProposalParsing.fold($0.name).split(separator: " ").first.map(String.init) == wanted }
         if byFirstName.count == 1 { return byFirstName[0].id }

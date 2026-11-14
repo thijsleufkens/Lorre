@@ -13,6 +13,7 @@ struct RecordsSettingsTab: View {
 
     @State private var folderPath = ""
     @State private var name = ""
+    @State private var proposalModel = ""
     @State private var errorMessage: String?
 
     private let strings = Strings.current
@@ -46,6 +47,14 @@ struct RecordsSettingsTab: View {
                     .font(DS.FontStyle.helper)
                     .foregroundStyle(DS.ColorToken.fgSecondary)
             }
+            Section {
+                TextField(strings.proposalModel, text: $proposalModel)
+                    .frame(maxWidth: DS.Layout.settingsFieldWidth)
+                    .onSubmit(saveModel)
+                Text(strings.proposalModelHelp)
+                    .font(DS.FontStyle.helper)
+                    .foregroundStyle(DS.ColorToken.fgSecondary)
+            }
             if let errorMessage {
                 Text(errorMessage)
                     .font(DS.FontStyle.body)
@@ -54,7 +63,10 @@ struct RecordsSettingsTab: View {
         }
         .formStyle(.grouped)
         .task { load() }
-        .onDisappear(perform: saveName)
+        .onDisappear {
+            saveName()
+            saveModel()
+        }
     }
 
     private func load() {
@@ -62,6 +74,7 @@ struct RecordsSettingsTab: View {
         do {
             folderPath = try store.exportFolder().path(percentEncoded: false)
             name = try store.userName()
+            proposalModel = try store.string(.proposalModel) ?? ""
         } catch {
             errorMessage = error.localizedDescription
         }
@@ -89,6 +102,12 @@ struct RecordsSettingsTab: View {
         guard let store else { return }
         let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
         save { try store.set(trimmed, for: .userName) }
+    }
+
+    private func saveModel() {
+        guard let store else { return }
+        let trimmed = proposalModel.trimmingCharacters(in: .whitespacesAndNewlines)
+        save { try store.set(trimmed.isEmpty ? nil : trimmed, for: .proposalModel) }
     }
 
     private func save(_ change: () throws -> Void) {

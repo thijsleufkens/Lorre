@@ -28,6 +28,7 @@ final class AppServices {
                 let settings = try await settingsStore.load()
                 await processor.diarization.setDiarizationEngine(settings.diarizationEngine)
                 try await processor.process(id, options: .init(settings: settings))
+                await ProposalRunner(database: database).run(id)
             }
             let coordinator = RecordingCoordinator(paths: paths, database: database, engine: LiveCaptureEngine())
             let model = RecorderModel(

@@ -112,6 +112,8 @@ struct Strings: Sendable {
     let useDefaultFolder: String
     let yourName: String
     let yourNameHelp: String
+    let proposalModel: String
+    let proposalModelHelp: String
 
     // MARK: Units
     let hourUnit: String
@@ -239,6 +241,11 @@ struct Strings: Sendable {
         yourNameHelp = t(
             "Zo noemt Lorre jou in teksten en verslagen.",
             "This is how Lorre refers to you in texts and records."
+        )
+        proposalModel = t("Model voor voorstellen", "Model for proposals")
+        proposalModelHelp = t(
+            "Naam van een model in Ollama op deze Mac, bijvoorbeeld gemma4:e4b. Laat leeg om zelf alle punten toe te voegen. Er gaat niets naar buiten.",
+            "Name of a model in Ollama on this Mac, for example gemma4:e4b. Leave empty to add every point yourself. Nothing leaves this Mac."
         )
 
         hourUnit = t("u", "h")

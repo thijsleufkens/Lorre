@@ -343,7 +343,7 @@ final class ReviewModelTests: XCTestCase {
         let third = Participant(conversationId: fixture.conversation.id, name: "Speaker S3")
         try fixture.store.saveParticipants([third])
         model.load()
-        XCTAssertEqual(model.participants.count, 3)
+        XCTAssertEqual(model.participants.count, 2, "a label nobody speaks under is left out")
         model.merge(third.id, into: fixture.anna.id)
         XCTAssertEqual(model.participants.map(\.name), ["Thijs", "Anna de Vries"])
 

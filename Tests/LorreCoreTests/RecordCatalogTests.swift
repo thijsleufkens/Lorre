@@ -179,3 +179,32 @@ final class RecordCatalogTests: XCTestCase {
         XCTAssertThrowsError(try RecordCatalog.resolve("  ", in: [a, b]))
     }
 }
+
+final class ActiveParticipantsTests: XCTestCase {
+    func testLeftoverLabelsAreLeftOutOfTheListAndTheRecord() throws {
+        let database = try LorreDatabase.inMemory()
+        let store = ConversationStore(database: database)
+        let conversation = Conversation(
+            title: "Call", type: .network, state: .proposed,
+            startedAt: Date(timeIntervalSince1970: 1_800_000_000), durationSeconds: 60
+        )
+        try store.save(conversation)
+        let user = Participant(conversationId: conversation.id, name: "Ik", isUser: true, sourceLabel: "user")
+        let other = Participant(conversationId: conversation.id, name: "Spreker 1", sourceLabel: "other-1")
+        let leftover = Participant(conversationId: conversation.id, name: "Speaker S1", sourceLabel: "S1")
+        try store.saveParticipants([user, other, leftover])
+        let version = TranscriptVersion(conversationId: conversation.id, engine: "test")
+        try store.saveTranscript(version: version, segments: [
+            Segment(transcriptVersionId: version.id, participantId: other.id, startMs: 0, endMs: 900, text: "Hallo."),
+        ])
+
+        let active = try store.activeParticipants(conversationId: conversation.id)
+        XCTAssertEqual(Set(active.map(\.name)), ["Ik", "Spreker 1"])
+
+        let folder = FileManager.default.temporaryDirectory
+            .appendingPathComponent("lorre-active-\(UUID().uuidString)", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: folder) }
+        let exported = try XCTUnwrap(RecordExporter(database: database, folder: { folder }).exportDraft(conversation.id))
+        XCTAssertEqual(Set(exported.record.conversation.participants.map(\.name)), ["Ik", "Spreker 1"])
+    }
+}

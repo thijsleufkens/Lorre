@@ -161,6 +161,8 @@ public struct RecordExporter: Sendable {
              WHERE transcriptVersion.conversationId = ? AND transcriptVersion.isCurrent = 1
              ORDER BY segment.startMs, segment.endMs
             """, arguments: [conversationId.uuidString])
+        // Labels left over from an earlier transcript version do not belong in the record.
+        let referenced = Set(segments.compactMap(\.participantId))
         let outcomes: [Outcome] = status == .approved
             ? try Outcome.fetchAll(db, sql: """
                 SELECT * FROM outcome WHERE conversationId = ? AND status = 'approved'
@@ -168,6 +170,7 @@ public struct RecordExporter: Sendable {
                 """, arguments: [conversationId.uuidString])
             : []
 
+        let outcomeOwners = Set(outcomes.compactMap(\.ownerParticipantId))
         return MeetingRecord(
             schemaVersion: MeetingRecord.currentSchemaVersion,
             recordId: conversation.id,
@@ -179,7 +182,10 @@ public struct RecordExporter: Sendable {
                 type: conversation.type,
                 startedAt: conversation.startedAt,
                 durationSeconds: conversation.durationSeconds,
-                participants: participants.map {
+                participants: participants.filter {
+                    referenced.isEmpty || $0.isUser || referenced.contains($0.id)
+                        || outcomeOwners.contains($0.id)
+                }.map {
                     .init(id: $0.id, name: $0.name, isUser: $0.isUser, personId: $0.personId)
                 }
             ),

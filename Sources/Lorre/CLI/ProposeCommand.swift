@@ -45,7 +45,7 @@ struct ProposeCommand: AsyncParsableCommand {
         let database = try store.openDatabase()
         let conversations = ConversationStore(database: database)
         let conversation = try ShowCommand.resolve(id, in: conversations.listConversations().map(\.conversation))
-        let participants = try conversations.participants(conversationId: conversation.id)
+        let participants = try conversations.activeParticipants(conversationId: conversation.id)
         let segments = try conversations.currentSegments(conversationId: conversation.id)
         guard !segments.isEmpty else {
             throw ValidationError("This conversation has no transcript yet.")
