@@ -65,7 +65,9 @@ final class RecorderModelTests: XCTestCase {
     }
 
     /// The queue's work marks the conversation as transcribed, like the real bridge does.
-    private func makeModel(failProcessing: Bool = false) -> (RecorderModel, ProcessingQueue) {
+    private func makeModel(
+        failProcessing: Bool = false, currentMeeting: @escaping @MainActor () -> UpcomingMeeting? = { nil }
+    ) -> (RecorderModel, ProcessingQueue) {
         let store = self.store!
         let queue = ProcessingQueue { id in
             if failProcessing {
@@ -79,7 +81,7 @@ final class RecorderModelTests: XCTestCase {
         let model = RecorderModel(
             paths: paths, database: database, coordinator: coordinator, queue: queue,
             defaults: defaults, notify: { title, _ in log.add(title) },
-            strings: { .english }
+            strings: { .english }, currentMeeting: currentMeeting
         )
         return (model, queue)
     }
@@ -101,6 +103,42 @@ final class RecorderModelTests: XCTestCase {
         XCTAssertEqual(model.rows[0].status, .ready)
         XCTAssertEqual(model.rows[0].durationSeconds, 90)
         XCTAssertNil(model.message)
+    }
+
+    private func meeting(_ id: String, title: String) -> UpcomingMeeting {
+        UpcomingMeeting(
+            eventId: id, title: title,
+            start: Date(timeIntervalSince1970: 1_800_000_000), end: Date(timeIntervalSince1970: 1_800_003_600)
+        )
+    }
+
+    func testStartDuringAMeetingTakesItsTitleAndEventId() async throws {
+        let current = meeting("event-1", title: "Overleg met Anna")
+        let (model, _) = makeModel(currentMeeting: { current })
+        await model.start()
+        let saved = try XCTUnwrap(store.listConversations().first?.conversation)
+        XCTAssertEqual(saved.title, "Overleg met Anna")
+        XCTAssertEqual(saved.calendarEventId, "event-1")
+        await model.stop()
+    }
+
+    func testStartWithoutAMeetingKeepsTheDefaultTitle() async throws {
+        let (model, _) = makeModel()
+        await model.start()
+        let saved = try XCTUnwrap(store.listConversations().first?.conversation)
+        XCTAssertTrue(saved.title.hasPrefix("Conversation "))
+        XCTAssertNil(saved.calendarEventId)
+        await model.stop()
+    }
+
+    func testBlankMeetingTitleKeepsTheDefaultTitleButLinksTheEvent() async throws {
+        let current = meeting("event-2", title: "  ")
+        let (model, _) = makeModel(currentMeeting: { current })
+        await model.start()
+        let saved = try XCTUnwrap(store.listConversations().first?.conversation)
+        XCTAssertTrue(saved.title.hasPrefix("Conversation "))
+        XCTAssertEqual(saved.calendarEventId, "event-2")
+        await model.stop()
     }
 
     func testFailedStartReturnsToIdleWithAMessage() async {
