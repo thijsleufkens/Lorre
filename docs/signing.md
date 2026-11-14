@@ -58,12 +58,16 @@ This has to be checked by hand once; it is the reason for the whole exercise.
 If step 3 fails, note the result here and in the product spec's open questions: it affects how updates
 reach other users.
 
-**Result (14 November 2026):** partly verified. Calendar access, granted in one build signed with
-`Lorre Local Signing`, was still there after installing the next build signed with the same certificate:
-no prompt, and the calendar was read. A 26-second microphone + system audio recording made on the third build signed with the certificate had
-sound on both tracks (peak 0.76 on each), the speaker's voice on the microphone track and the video that
-was playing on the system track. Still to confirm: whether macOS showed a permission prompt before that
-recording.
+**Result (14 November 2026): verified.** With `Lorre Local Signing`:
+
+- The first recording after the switch from ad-hoc signing asked for permission once, as expected: to
+  macOS it is a new app.
+- A new build (different build number, so a different code hash, same certificate) was then installed. A
+  25-second microphone + system audio recording on it gave no permission prompt and had sound on both
+  tracks: the speaker's voice on the microphone track, the video that was playing on the system track.
+- Calendar access carried over between builds in the same way.
+
+So permissions survive a rebuild and an update, as long as the certificate stays the same.
 
 ## Other identities in the keychain
 
