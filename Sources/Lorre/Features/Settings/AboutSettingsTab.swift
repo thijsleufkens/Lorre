@@ -1,6 +1,8 @@
 import SwiftUI
 
 struct AboutSettingsTab: View {
+    @Environment(\.updaterModel) private var updater
+
     var body: some View {
         VStack(spacing: 18) {
             Spacer().frame(height: 12)
@@ -13,6 +15,10 @@ struct AboutSettingsTab: View {
                 Text(versionLine)
                     .font(.callout)
                     .foregroundStyle(.secondary)
+                if let updater {
+                    CheckForUpdatesButton(updater: updater)
+                        .padding(.top, 6)
+                }
             }
 
             VStack(spacing: 4) {
@@ -36,6 +42,6 @@ struct AboutSettingsTab: View {
     private var versionLine: String {
         let version = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "—"
         let build = Bundle.main.infoDictionary?["CFBundleVersion"] as? String ?? "—"
-        return "Version \(version) (\(build))"
+        return "\(Strings.current.aboutVersionTitle) \(version) (\(build))"
     }
 }

@@ -198,6 +198,8 @@ struct Strings: Sendable {
     let menuRowProcessing: String
     let menuRowReady: String
     let menuUnavailable: String
+    let checkForUpdates: String
+    let aboutVersionTitle: String
     let startupFailed: String
     let notifyRecoveredTitle: String
     let notifyFailedTitle: String
@@ -464,6 +466,8 @@ struct Strings: Sendable {
         menuRowProcessing = t("Wordt uitgewerkt…", "Being written out…")
         menuRowReady = t("Klaar", "Ready")
         menuUnavailable = t("Opnemen is nu niet beschikbaar.", "Recording is not available right now.")
+        checkForUpdates = t("Zoek naar updates…", "Check for Updates…")
+        aboutVersionTitle = t("Versie", "Version")
         startupFailed = t(
             "Lorre kan je gesprekken nu niet openen. Sluit Lorre af en open het opnieuw. Blijft dit gebeuren, start dan je Mac opnieuw op.",
             "Lorre cannot open your conversations right now. Quit Lorre and open it again. If this keeps happening, restart your Mac."
