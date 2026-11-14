@@ -57,6 +57,8 @@ final class RecorderModel {
     private let defaults: UserDefaults
     private let notify: @Sendable (_ title: String, _ body: String) -> Void
     private let strings: @MainActor () -> Strings
+    /// The meeting in progress, from what is already loaded. Never asks for access, never waits.
+    private let currentMeeting: @MainActor () -> UpcomingMeeting?
     private var levelTask: Task<Void, Never>?
     private var eventTask: Task<Void, Never>?
 
@@ -67,7 +69,8 @@ final class RecorderModel {
         queue: ProcessingQueue,
         defaults: UserDefaults = .standard,
         notify: @escaping @Sendable (_ title: String, _ body: String) -> Void = { _, _ in },
-        strings: @escaping @MainActor () -> Strings = { Strings.current }
+        strings: @escaping @MainActor () -> Strings = { Strings.current },
+        currentMeeting: @escaping @MainActor () -> UpcomingMeeting? = { nil }
     ) {
         self.paths = paths
         self.store = ConversationStore(database: database)
@@ -76,6 +79,7 @@ final class RecorderModel {
         self.defaults = defaults
         self.notify = notify
         self.strings = strings
+        self.currentMeeting = currentMeeting
         self.source = defaults.string(forKey: Self.sourceDefaultsKey).flatMap(CaptureSource.init(rawValue:))
             ?? .microphoneAndSystemAudio
     }
@@ -100,7 +104,11 @@ final class RecorderModel {
         phase = .starting
         message = nil
         do {
-            let conversation = try await coordinator.start(source: source)
+            let meeting = currentMeeting()
+            let title = meeting.map(\.title).flatMap { $0.trimmingCharacters(in: .whitespaces).isEmpty ? nil : $0 }
+            let conversation = try await coordinator.start(
+                source: source, title: title, calendarEventId: meeting?.eventId
+            )
             phase = .recording(since: conversation.startedAt)
             startLevelUpdates()
         } catch {

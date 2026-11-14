@@ -24,6 +24,8 @@ final class WorkspaceModel {
     private(set) var errorMessage: String?
     /// The people list and the page of one person.
     let people: PeopleModel
+    /// What the calendar says is coming up.
+    let comingUp: ComingUpModel
 
     /// Setting it runs the search.
     var searchText: String = "" {
@@ -34,11 +36,16 @@ final class WorkspaceModel {
     @ObservationIgnored private let paths: LorrePaths
     @ObservationIgnored private let makePlayer: @MainActor () -> any EvidencePlaying
 
-    init(database: LorreDatabase, paths: LorrePaths, makePlayer: @escaping @MainActor () -> any EvidencePlaying) {
+    init(
+        database: LorreDatabase, paths: LorrePaths,
+        calendar: any CalendarSource = NoCalendarSource(),
+        makePlayer: @escaping @MainActor () -> any EvidencePlaying
+    ) {
         self.database = database
         self.paths = paths
         self.makePlayer = makePlayer
         self.people = PeopleModel(database: database)
+        self.comingUp = ComingUpModel(source: calendar, database: database)
     }
 
     /// The small settings kept in the same database (first-run state, the user's name).
@@ -56,6 +63,7 @@ final class WorkspaceModel {
         }
         runSearch()
         people.load()
+        Task { await comingUp.reload() }
     }
 
     func open(_ conversationID: UUID) {

@@ -103,6 +103,8 @@ cat > "$CONTENTS_DIR/Info.plist" <<PLIST
   <string>Lorre transcribes audio locally — your microphone, system audio from other apps, or both.</string>
   <key>NSAudioCaptureUsageDescription</key>
   <string>Lorre captures audio from other apps so meetings and system audio can be transcribed locally.</string>
+  <key>NSCalendarsFullAccessUsageDescription</key>
+  <string>Lorre reads the calendar on this Mac to show upcoming conversations and to name recordings. Nothing leaves your Mac.</string>
   <key>NSHighResolutionCapable</key>
   <true/>
 </dict>

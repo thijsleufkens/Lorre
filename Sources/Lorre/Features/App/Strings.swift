@@ -34,6 +34,10 @@ struct Strings: Sendable {
     let reviewButton: String
     let reviewButtonHelp: String
     let todayEmpty: String
+    let comingUpHeader: String
+    let calendarPrompt: String
+    let calendarAllow: String
+    let calendarAllowHelp: String
     let stateRecording: String
     let stateProcessing: String
     let stateInterrupted: String
@@ -234,6 +238,16 @@ struct Strings: Sendable {
         todayEmpty = t(
             "Niets na te kijken. Start een opname zodra je een gesprek hebt.",
             "Nothing to review. Start a recording when you have a conversation."
+        )
+        comingUpHeader = t("Straks", "Coming up")
+        calendarPrompt = t(
+            "Laat Lorre in je agenda kijken, dan zie je hier wat er straks komt.",
+            "Let Lorre look at your calendar to see here what is coming up."
+        )
+        calendarAllow = t("Agenda gebruiken", "Use calendar")
+        calendarAllowHelp = t(
+            "Lorre leest je agenda op deze Mac; er verlaat niets je Mac",
+            "Lorre reads your calendar on this Mac; nothing leaves your Mac"
         )
         stateRecording = t("Wordt opgenomen", "Recording")
         stateProcessing = t("Wordt uitgewerkt", "Being transcribed")
@@ -496,6 +510,16 @@ struct Strings: Sendable {
         case (.dutch, _): "\(n) voorgestelde uitkomsten"
         case (.english, 1): "1 proposed outcome"
         case (.english, _): "\(n) proposed outcomes"
+        }
+    }
+
+    /// "2 open punten met Anna".
+    func openItemsWith(_ n: Int, _ name: String) -> String {
+        switch (language, n) {
+        case (.dutch, 1): "1 open punt met \(name)"
+        case (.dutch, _): "\(n) open punten met \(name)"
+        case (.english, 1): "1 open item with \(name)"
+        case (.english, _): "\(n) open items with \(name)"
         }
     }
 
