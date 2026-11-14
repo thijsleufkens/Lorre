@@ -27,16 +27,54 @@ struct TodayView: View {
     }
 
     var body: some View {
-        if workspace.toReview.isEmpty && workspace.inProgress.isEmpty {
+        if workspace.toReview.isEmpty && workspace.inProgress.isEmpty && !showsComingUp {
             emptyState
         } else {
             list
         }
     }
 
+    /// Whether the "Coming up" section has anything to show: meetings, or the quiet offer.
+    private var showsComingUp: Bool {
+        switch workspace.comingUp.calendarAccess {
+        case .notAsked: true
+        case .granted: !workspace.comingUp.comingUp.isEmpty
+        case .denied: false
+        }
+    }
+
+    @ViewBuilder
+    private var comingUpSection: some View {
+        let model = workspace.comingUp
+        if model.calendarAccess == .notAsked {
+            section(strings.comingUpHeader) {
+                HStack(spacing: DS.Space.x4) {
+                    Text(strings.calendarPrompt)
+                        .font(DS.FontStyle.body)
+                        .foregroundStyle(DS.ColorToken.fgSecondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                    Spacer(minLength: DS.Space.x4)
+                    Button(strings.calendarAllow) { Task { await model.allowCalendar() } }
+                        .buttonStyle(SecondaryControlButtonStyle())
+                        .help(strings.calendarAllowHelp)
+                }
+                .padding(DS.Space.x4)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .dsPanelSurface(alt: true)
+            }
+        } else if model.calendarAccess == .granted, !model.comingUp.isEmpty {
+            section(strings.comingUpHeader) {
+                ForEach(model.comingUp) { item in
+                    ComingUpRow(item: item) { workspace.showPerson($0) }
+                }
+            }
+        }
+    }
+
     private var list: some View {
         ScrollView {
                 VStack(alignment: .leading, spacing: DS.Space.x6) {
+                    comingUpSection
                     if !workspace.toReview.isEmpty {
                         section(strings.toReviewHeader) {
                             ForEach(workspace.toReview, id: \.conversation.id) { summary in
@@ -197,5 +235,41 @@ private struct InProgressRow: View {
         let conversation = summary.conversation
         return ViewFormat.friendlyError(conversation.lastError, strings: strings)
             ?? (conversation.state == .interrupted ? strings.errorInterrupted : nil)
+    }
+}
+
+/// One meeting that is coming up: when, what, with whom, and what is still open with them.
+private struct ComingUpRow: View {
+    let item: ComingUpItem
+    let onShowPerson: (UUID) -> Void
+
+    private let strings = Strings.current
+
+    var body: some View {
+        let meeting = item.meeting
+        VStack(alignment: .leading, spacing: DS.Space.x1_5) {
+            HStack(alignment: .firstTextBaseline, spacing: DS.Space.x3) {
+                Text(ViewFormat.dayAndTime(meeting.start, strings))
+                    .font(DS.FontStyle.control)
+                    .foregroundStyle(DS.ColorToken.fgSecondary)
+                Text(meeting.title.isEmpty ? strings.untitledConversation : meeting.title)
+                    .font(DS.FontStyle.bodyStrong)
+                    .foregroundStyle(DS.ColorToken.fgPrimary)
+            }
+            if !meeting.attendeeNames.isEmpty {
+                Text(meeting.attendeeNames.joined(separator: ", "))
+                    .font(DS.FontStyle.body)
+                    .foregroundStyle(DS.ColorToken.fgSecondary)
+            }
+            if let match = item.mostOpen, let personId = match.personId {
+                Button(strings.openItemsWith(match.openCount, match.name)) { onShowPerson(personId) }
+                    .buttonStyle(.plain)
+                    .font(DS.FontStyle.bodyStrong)
+                    .foregroundStyle(DS.ColorToken.accentPrimary)
+            }
+        }
+        .padding(DS.Space.x4)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .dsPanelSurface(alt: true)
     }
 }

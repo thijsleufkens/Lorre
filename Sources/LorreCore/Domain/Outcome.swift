@@ -29,6 +29,8 @@ public struct Outcome: Identifiable, Codable, Equatable, Sendable {
     public var evidenceStartMs: Int?
     public var evidenceEndMs: Int?
     public var createdAt: Date
+    /// The model that proposed this outcome; nil for outcomes the user added.
+    public var proposedBy: String?
 
     public init(
         id: UUID = UUID(),
@@ -43,7 +45,8 @@ public struct Outcome: Identifiable, Codable, Equatable, Sendable {
         evidenceSegmentIds: [UUID] = [],
         evidenceStartMs: Int? = nil,
         evidenceEndMs: Int? = nil,
-        createdAt: Date = Date()
+        createdAt: Date = Date(),
+        proposedBy: String? = nil
     ) {
         self.id = id
         self.conversationId = conversationId
@@ -58,5 +61,6 @@ public struct Outcome: Identifiable, Codable, Equatable, Sendable {
         self.evidenceStartMs = evidenceStartMs
         self.evidenceEndMs = evidenceEndMs
         self.createdAt = createdAt
+        self.proposedBy = proposedBy
     }
 }

@@ -69,6 +69,9 @@ final class ReplaceProposalsTests: XCTestCase {
         )
 
         let all = try review.outcomes(conversationId: conversation.id)
+        XCTAssertEqual(fresh.map(\.proposedBy), ["m2"])
+        XCTAssertEqual(approved.proposedBy, "m")
+        XCTAssertNil(mine.proposedBy)
         XCTAssertEqual(Set(all.map(\.id)), Set([approved.id, rejected.id, edited.id, mine.id, agent.id] + fresh.map(\.id)))
         XCTAssertEqual(all.first { $0.id == approved.id }, approved)
         XCTAssertEqual(all.first { $0.id == rejected.id }, rejected)

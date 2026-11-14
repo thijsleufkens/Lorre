@@ -31,19 +31,32 @@ final class AppServices {
                 await ProposalRunner(database: database).run(id)
             }
             let coordinator = RecordingCoordinator(paths: paths, database: database, engine: LiveCaptureEngine())
+            let workspaceModel = WorkspaceModel(
+                database: database, paths: paths, calendar: EventKitCalendarSource(),
+                makePlayer: { EvidencePlayer() }
+            )
             let model = RecorderModel(
                 paths: paths,
                 database: database,
                 coordinator: coordinator,
                 queue: queue,
-                notify: Self.postNotification
+                notify: Self.postNotification,
+                currentMeeting: { workspaceModel.comingUp.currentMeeting() }
             )
             recorder = model
-            workspace = WorkspaceModel(database: database, paths: paths, makePlayer: { EvidencePlayer() })
+            workspace = workspaceModel
             settings = SettingsStore(database: database)
             startupError = nil
             model.observeQueue()
             Task { await model.recoverAtLaunch(database: database) }
+            // The recorder names a recording after the meeting in progress without waiting on the
+            // calendar, so the loaded meetings are kept fresh in the background.
+            Task {
+                while !Task.isCancelled {
+                    await workspaceModel.comingUp.reload()
+                    try? await Task.sleep(for: .seconds(300))
+                }
+            }
         } catch {
             recorder = nil
             workspace = nil

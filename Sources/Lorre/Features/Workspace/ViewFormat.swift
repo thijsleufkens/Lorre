@@ -46,6 +46,10 @@ enum ViewFormat {
            calendar.isDate(date, inSameDayAs: yesterday) {
             return "\(strings.yesterdayWord) \(time)"
         }
+        if let tomorrow = calendar.date(byAdding: .day, value: 1, to: now),
+           calendar.isDate(date, inSameDayAs: tomorrow) {
+            return "\(strings.tomorrowWord) \(time)"
+        }
         let sameYear = calendar.component(.year, from: date) == calendar.component(.year, from: now)
         let day = formatted(date, template: sameYear ? "d MMM" : "d MMM y", calendar: calendar, strings)
         return "\(day) \(time)"

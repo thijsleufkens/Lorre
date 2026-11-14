@@ -25,6 +25,9 @@ enum Schema {
                 );
                 """)
         }
+        migrator.registerMigration("v4") { db in
+            try db.execute(sql: "ALTER TABLE outcome ADD COLUMN proposedBy TEXT;")
+        }
         return migrator
     }
 

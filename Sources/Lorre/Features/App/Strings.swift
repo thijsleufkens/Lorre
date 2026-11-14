@@ -34,6 +34,10 @@ struct Strings: Sendable {
     let reviewButton: String
     let reviewButtonHelp: String
     let todayEmpty: String
+    let comingUpHeader: String
+    let calendarPrompt: String
+    let calendarAllow: String
+    let calendarAllowHelp: String
     let stateRecording: String
     let stateProcessing: String
     let stateInterrupted: String
@@ -49,6 +53,7 @@ struct Strings: Sendable {
     let notReadyHelp: String
     let todayWord: String
     let yesterdayWord: String
+    let tomorrowWord: String
 
     // MARK: Review: header
     let back: String
@@ -198,6 +203,8 @@ struct Strings: Sendable {
     let menuRowProcessing: String
     let menuRowReady: String
     let menuUnavailable: String
+    let checkForUpdates: String
+    let aboutVersionTitle: String
     let startupFailed: String
     let notifyRecoveredTitle: String
     let notifyFailedTitle: String
@@ -235,6 +242,16 @@ struct Strings: Sendable {
             "Niets na te kijken. Start een opname zodra je een gesprek hebt.",
             "Nothing to review. Start a recording when you have a conversation."
         )
+        comingUpHeader = t("Straks", "Coming up")
+        calendarPrompt = t(
+            "Laat Lorre in je agenda kijken, dan zie je hier wat er straks komt.",
+            "Let Lorre look at your calendar to see here what is coming up."
+        )
+        calendarAllow = t("Agenda gebruiken", "Use calendar")
+        calendarAllowHelp = t(
+            "Lorre leest je agenda op deze Mac; er verlaat niets je Mac",
+            "Lorre reads your calendar on this Mac; nothing leaves your Mac"
+        )
         stateRecording = t("Wordt opgenomen", "Recording")
         stateProcessing = t("Wordt uitgewerkt", "Being transcribed")
         stateInterrupted = t("Onderbroken", "Interrupted")
@@ -249,6 +266,7 @@ struct Strings: Sendable {
         notReadyHelp = t("Dit gesprek is nog niet uitgewerkt", "This conversation is not transcribed yet")
         todayWord = t("vandaag", "today")
         yesterdayWord = t("gisteren", "yesterday")
+        tomorrowWord = t("morgen", "tomorrow")
 
         back = t("Terug", "Back")
         backHelp = t("Terug naar het overzicht", "Back to the overview")
@@ -464,6 +482,8 @@ struct Strings: Sendable {
         menuRowProcessing = t("Wordt uitgewerkt…", "Being written out…")
         menuRowReady = t("Klaar", "Ready")
         menuUnavailable = t("Opnemen is nu niet beschikbaar.", "Recording is not available right now.")
+        checkForUpdates = t("Zoek naar updates…", "Check for Updates…")
+        aboutVersionTitle = t("Versie", "Version")
         startupFailed = t(
             "Lorre kan je gesprekken nu niet openen. Sluit Lorre af en open het opnieuw. Blijft dit gebeuren, start dan je Mac opnieuw op.",
             "Lorre cannot open your conversations right now. Quit Lorre and open it again. If this keeps happening, restart your Mac."
@@ -496,6 +516,16 @@ struct Strings: Sendable {
         case (.dutch, _): "\(n) voorgestelde uitkomsten"
         case (.english, 1): "1 proposed outcome"
         case (.english, _): "\(n) proposed outcomes"
+        }
+    }
+
+    /// "2 open punten met Anna".
+    func openItemsWith(_ n: Int, _ name: String) -> String {
+        switch (language, n) {
+        case (.dutch, 1): "1 open punt met \(name)"
+        case (.dutch, _): "\(n) open punten met \(name)"
+        case (.english, 1): "1 open item with \(name)"
+        case (.english, _): "\(n) open items with \(name)"
         }
     }
 

@@ -39,7 +39,7 @@ PATH=/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolch
 | Test one | `swift test --filter <TestClassName>` or `swift test --filter <TestClassName>.<methodName>` |
 | Package `.app` | `./scripts/package_macos_app.sh release` → `dist/Lorre.app` |
 | CI parity | `./scripts/ci_check.sh` |
-| Install built app | `rm -rf /Applications/Lorre.app && cp -R dist/Lorre.app /Applications/` |
+| Install built app | `rm -rf /Applications/Lorre.app && ditto --noextattr --norsrc dist/Lorre.app /Applications/Lorre.app` (plain `cp -R` carries cloud-sync attributes along and breaks the signature) |
 | Transcribe headless | `dist/Lorre.app/Contents/MacOS/Lorre transcribe <file> [--register]` |
 
 All `swift` invocations need Xcode's toolchain as described above. `scripts/swift_test.sh` is a thin wrapper.
@@ -65,6 +65,8 @@ Agents read records through `Lorre records`, `Lorre record <id>`, `Lorre mark-pr
 Work on this rebuild is split into packages with fixed contracts (`docs/superpowers/plans/2026-11-14-lorre-rebuild-m3-m7-packages.md`); screens must be checked in the running app after merging, since tests do not see layout.
 
 Signing: `LORRE_SIGN_IDENTITY` selects the code-signing identity for `scripts/package_macos_app.sh` (default ad-hoc). See `docs/signing.md`.
+
+Automatic updates (Sparkle, `Features/Updates/`, `scripts/make_release.sh`; the package script embeds `Sparkle.framework`, signs it first, and writes the feed keys only when `LORRE_UPDATE_FEED_URL` and `LORRE_UPDATE_PUBLIC_KEY` are set): see `docs/updates.md`.
 
 ## Repository layout
 

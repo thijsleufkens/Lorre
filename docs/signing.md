@@ -58,7 +58,12 @@ This has to be checked by hand once; it is the reason for the whole exercise.
 If step 3 fails, note the result here and in the product spec's open questions: it affects how updates
 reach other users.
 
-**Result:** not yet verified.
+**Result (14 November 2026):** partly verified. Calendar access, granted in one build signed with
+`Lorre Local Signing`, was still there after installing the next build signed with the same certificate:
+no prompt, and the calendar was read. A 26-second microphone + system audio recording made on the third build signed with the certificate had
+sound on both tracks (peak 0.76 on each), the speaker's voice on the microphone track and the video that
+was playing on the system track. Still to confirm: whether macOS showed a permission prompt before that
+recording.
 
 ## Other identities in the keychain
 
