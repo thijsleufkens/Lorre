@@ -254,6 +254,105 @@ with one worked example of "list new records, read one, mark it processed".
 
 ## Package B — the screens (milestone 3, after A is merged)
 
-Today, Conversations and Review views on `WorkspaceModel` / `ReviewModel`, a `Strings` type for Dutch
-and English UI text, the new main window replacing the old one, and Settings for the export folder and
-the user's name. Written out in detail once package A has landed, because it builds on A's code.
+**Owns:** `Sources/Lorre/Features/Workspace/` (everything except `WorkspaceModel.swift`),
+`Sources/Lorre/Features/Review/ReviewView.swift` and other new view files in that folder,
+`Sources/Lorre/Features/App/Strings.swift`, `Sources/Lorre/Features/Settings/RecordsSettingsTab.swift`,
+`Sources/Lorre/App/LorreApp.swift`, additions to `Sources/Lorre/Core/DesignSystem/DesignSystem.swift`
+(new tokens only), one line in `Sources/Lorre/Features/Settings/SettingsView.swift` to add the tab, and
+`Tests/LorreTests/StringsTests.swift`.
+
+Views are thin: no database calls, no business rules. Everything they need is on `WorkspaceModel`,
+`ReviewModel` and `RecorderModel`. If a view needs something a model does not offer, add a small
+computed property to the model in a clearly marked extension in the view's own file; do not change the
+model files.
+
+### Strings
+
+`struct Strings` with one stored instance per language and `static var current: Strings` chosen by
+`LorreLanguage.current`. Every user-visible text of the new screens is a property or function on it
+(for texts with numbers: `func toReviewCount(_ n: Int) -> String`, with correct singular and plural).
+Dutch is the leading language; write it the way a Dutch professional would say it, short and without
+jargon ("Nakijken", "Goedkeuren", "Afwijzen", "Klaar"), informal "je". Kind and type names come from
+`OutcomeKind.title(_:)` / `ConversationType.title(_:)` in `LorreCore`. `StringsTests`: both languages
+have a non-empty value for every property (use `Mirror`), and plural functions are right for 0, 1, 2.
+
+### Window
+
+`LorreApp` shows `WorkspaceView` in the main `WindowGroup` instead of `AppShellView`. `AppViewModel`
+stays alive (it still drives Settings, the call watcher and dictation) and `viewModel.start()` is still
+called; `AppShellView` is no longer shown anywhere (leave its code in place). The `MenuBarExtra`, the
+`AppServices` wiring and `externalRecorderStart` stay as they are. `AppServices` gains what the
+workspace needs (`WorkspaceModel`), created once next to the recorder, sharing its database and paths.
+Minimum window size 980 × 640.
+
+### `WorkspaceView`
+
+A top bar and a content area, no sidebar.
+
+- Top bar: the "Lorre" wordmark (`DS.FontStyle.wordmark`), a segmented control Today / Conversations,
+  and on the right the record control: "● Opnemen" when idle, elapsed time plus "Stop" while recording
+  (bound to `RecorderModel`), disabled while starting or stopping.
+- When `workspace.review` is set, the content area shows `ReviewView` instead of the section.
+- `recorder.message`, when set, is shown as a dismissible bar under the top bar.
+- Refresh the workspace when the window appears, when the recorder's phase changes, and every 5 s
+  while anything is in progress.
+
+### `TodayView` (spec 4.1)
+
+- Section "Na te kijken": one card per conversation in `toReview`: title, day and time, duration,
+  the participant names, a line with the number of proposed outcomes when there are any, and a
+  "Nakijken" button. The whole card opens the review.
+- Section "Bezig": conversations in `inProgress` with their state in words (recording, waiting, being
+  transcribed, interrupted) and, for interrupted or failed ones, the `lastError` text.
+- Empty state when both are empty: one calm sentence and the record button. No filler.
+- The "Coming up" calendar section of the spec is milestone 6; leave it out.
+
+### `ConversationsView`
+
+A search field and the list of `all` (newest first, grouped by month): title, date, duration, a small
+state label. Typing searches the transcripts: hits are shown as the conversation title plus the snippet,
+with the matched words emphasised (the snippet marks them with `[` and `]`). Clicking a row or a hit
+opens the review. Imported conversations are in this list like any other.
+
+### `ReviewView` (spec 4.2)
+
+Two columns under a header.
+
+- Header: back button; the title, editable in place; a menu for the conversation type; the
+  participants as chips, each with a menu: rename, "Dit ben ik", merge into another participant; date
+  and duration.
+- Left column: `review.groups`, each with its kind title and items. An item shows its text, the owner
+  (a menu of participants, only for kinds with an owner), and its status: proposed items have Approve
+  and Reject buttons, approved items a check mark. The selected item is highlighted. Double-click or
+  `E` edits the text in place. Below the groups: "+ Uitkomst toevoegen" (a kind menu and a text field).
+- Right column, top: the evidence for the selected outcome (`evidenceSegments`, the evidence itself
+  emphasised against its context) with a play button. Below it, collapsible, the full transcript:
+  each segment with time, speaker name and text; clicking a segment toggles it in
+  `selectedSegmentIDs` (shift-click extends the range); while there is a selection a bar offers the
+  kinds, and choosing one asks for the text (prefilled with the selected text, trimmed to one
+  sentence) and calls `addOutcome`. Each segment has a small play button and a speaker menu.
+- Footer: the keyboard hints and a primary button "Alles goedkeuren en afronden" (`⌘↩`). After a
+  successful finish, show where the record was written with a "Toon in Finder" button and return to
+  Today on "Klaar".
+- Keyboard (when no text field has focus): `↑`/`↓` move, `A` approve, `X` reject, `E` edit, `Space`
+  play/stop the evidence, `N` focuses the add field, `⌘↩` finishes, `Esc` goes back.
+- `review.errorMessage`, when set, is shown above the footer.
+
+### Settings
+
+`RecordsSettingsTab`: the export folder (shown as a path, "Kies map…" with `NSOpenPanel`, "Standaard"
+to reset) and the user's name, both stored through `SettingsStore`. Added as a fifth tab.
+
+### Design
+
+Sage tokens only. Calm, generous spacing, readable at a glance: the screen is for someone who has just
+left a conversation and wants to be done in two minutes. Buttons use the existing
+`PrimaryControlButtonStyle` / `SecondaryControlButtonStyle`; panels use `.dsPanelSurface()`. Works in
+light and dark mode. No decoration that carries no information.
+
+### Verification (done on the main branch after merging)
+
+Build, package, install, open. Screenshots of Today, Conversations with a search, and Review on the
+8 Oct 2026 conversation. In Review: add three outcomes from transcript selections, change an owner,
+rename a participant and mark "Dit ben ik", play an evidence moment, finish, and check the JSON and
+Markdown files in the export folder against what was approved.

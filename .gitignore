@@ -12,3 +12,6 @@ DerivedData/
 /testreport.md
 .superpowers/
 *.bak
+
+# Working copies of agents
+.claude/worktrees/
