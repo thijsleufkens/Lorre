@@ -7,6 +7,9 @@ struct LorreApp: App {
 
     @StateObject private var viewModel = AppViewModel(dependencies: LorreApp.dependencies)
     @State private var services = AppServices(dependencies: LorreApp.dependencies)
+    /// Created here, so only in GUI mode (the command line never builds `LorreApp`), and only when
+    /// the Info.plist carries an update configuration.
+    private static let updater = UpdaterModel.makeIfConfigured()
 
     @ViewBuilder private var mainContent: some View {
         if let workspace = services.workspace {
@@ -34,10 +37,18 @@ struct LorreApp: App {
                 }
         }
         .windowResizability(.contentMinSize)
+        .commands {
+            if let updater = LorreApp.updater {
+                CommandGroup(after: .appInfo) {
+                    CheckForUpdatesButton(updater: updater)
+                }
+            }
+        }
 
         Settings {
             SettingsView(viewModel: viewModel)
                 .environment(\.settingsStore, services.settings)
+                .environment(\.updaterModel, LorreApp.updater)
         }
 
         MenuBarExtra {

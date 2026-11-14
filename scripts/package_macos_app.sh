@@ -8,6 +8,9 @@ if [[ ! -f "$RELEASE_CONFIG_PATH" ]]; then
   exit 1
 fi
 source "$RELEASE_CONFIG_PATH"
+# A release can override the version and build number (scripts/make_release.sh does).
+APP_VERSION="${LORRE_VERSION:-$APP_VERSION}"
+BUILD_NUMBER="${LORRE_BUILD:-$BUILD_NUMBER}"
 
 CONFIGURATION="debug" # debug | release
 SKIP_BUILD="0"
@@ -67,9 +70,34 @@ mkdir -p "$MACOS_DIR" "$RESOURCES_DIR"
 mkdir -p "$FRAMEWORKS_DIR"
 
 cp "$BIN_PATH" "$MACOS_DIR/$APP_NAME"
+
+# Sparkle (automatic updates) comes as a prebuilt framework in the SwiftPM artifacts.
+SPARKLE_FRAMEWORK="$(find "$ROOT_DIR/.build/artifacts" -type d -name Sparkle.framework -path '*macos-arm64_x86_64*' 2>/dev/null | head -n 1)"
+if [[ -z "$SPARKLE_FRAMEWORK" ]]; then
+  echo "Could not find Sparkle.framework under .build/artifacts; run swift build first" >&2
+  exit 1
+fi
+ditto "$SPARKLE_FRAMEWORK" "$FRAMEWORKS_DIR/Sparkle.framework"
+if ! otool -l "$MACOS_DIR/$APP_NAME" | grep -q "@executable_path/../Frameworks"; then
+  install_name_tool -add_rpath "@executable_path/../Frameworks" "$MACOS_DIR/$APP_NAME"
+fi
 cp "$ICON_PATH" "$RESOURCES_DIR/$APP_NAME.icns"
 if [[ -f "$TEXT_NORMALIZATION_LIBRARY" ]]; then
   cp "$TEXT_NORMALIZATION_LIBRARY" "$FRAMEWORKS_DIR/libnemo_text_processing.dylib"
+fi
+
+# Update feed and public key, only when both are given. Without them the app has no update feature.
+UPDATE_PLIST_KEYS=""
+if [[ -n "${LORRE_UPDATE_FEED_URL:-}" && -n "${LORRE_UPDATE_PUBLIC_KEY:-}" ]]; then
+  UPDATE_PLIST_KEYS="  <key>SUFeedURL</key>
+  <string>$LORRE_UPDATE_FEED_URL</string>
+  <key>SUPublicEDKey</key>
+  <string>$LORRE_UPDATE_PUBLIC_KEY</string>
+  <key>SUEnableAutomaticChecks</key>
+  <true/>"
+  echo "Updates: configured (feed $LORRE_UPDATE_FEED_URL)"
+else
+  echo "Updates: not configured (set LORRE_UPDATE_FEED_URL and LORRE_UPDATE_PUBLIC_KEY to enable)"
 fi
 
 cat > "$CONTENTS_DIR/Info.plist" <<PLIST
@@ -107,6 +135,7 @@ cat > "$CONTENTS_DIR/Info.plist" <<PLIST
   <string>Lorre reads the calendar on this Mac to show upcoming conversations and to name recordings. Nothing leaves your Mac.</string>
   <key>NSHighResolutionCapable</key>
   <true/>
+$UPDATE_PLIST_KEYS
 </dict>
 </plist>
 PLIST
@@ -133,7 +162,19 @@ if [[ "$SIGN_IDENTITY" == "-" ]]; then
 else
   echo "Signing with identity: $SIGN_IDENTITY"
 fi
-codesign --force --deep --sign "$SIGN_IDENTITY" --entitlements "$ENTITLEMENTS_PATH" "$APP_BUNDLE"
+# Nested code is signed first, inside out, with the same identity; the app is signed last and
+# without --deep so the nested code keeps its own signature (and does not get the app's entitlements).
+xattr -cr "$APP_BUNDLE" 2>/dev/null || true # cloud-synced folders add attributes codesign rejects
+SPARKLE_B="$FRAMEWORKS_DIR/Sparkle.framework/Versions/B"
+for nested in "$SPARKLE_B/XPCServices/Installer.xpc" "$SPARKLE_B/XPCServices/Downloader.xpc" \
+              "$SPARKLE_B/Autoupdate" "$SPARKLE_B/Updater.app" "$FRAMEWORKS_DIR/Sparkle.framework"; do
+  codesign --force --sign "$SIGN_IDENTITY" "$nested"
+done
+if [[ -f "$FRAMEWORKS_DIR/libnemo_text_processing.dylib" ]]; then
+  codesign --force --sign "$SIGN_IDENTITY" "$FRAMEWORKS_DIR/libnemo_text_processing.dylib"
+fi
+codesign --force --sign "$SIGN_IDENTITY" --entitlements "$ENTITLEMENTS_PATH" "$APP_BUNDLE"
+codesign --verify --deep --strict "$APP_BUNDLE"
 codesign -d -r- "$APP_BUNDLE" 2>&1 | grep 'designated' || true
 
 echo "Created: $APP_BUNDLE"

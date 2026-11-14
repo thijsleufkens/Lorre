@@ -66,6 +66,8 @@ Work on this rebuild is split into packages with fixed contracts (`docs/superpow
 
 Signing: `LORRE_SIGN_IDENTITY` selects the code-signing identity for `scripts/package_macos_app.sh` (default ad-hoc). See `docs/signing.md`.
 
+Automatic updates (Sparkle, `Features/Updates/`, `scripts/make_release.sh`; the package script embeds `Sparkle.framework`, signs it first, and writes the feed keys only when `LORRE_UPDATE_FEED_URL` and `LORRE_UPDATE_PUBLIC_KEY` are set): see `docs/updates.md`.
+
 ## Repository layout
 
 - `Sources/Lorre/App/` — `LorreEntry.swift` is the `@main` entrypoint: it routes via `CLIRouting` to either the headless CLI or the SwiftUI app. `LorreApp.swift` is the SwiftUI scene root: a `WindowGroup` with `WorkspaceView`, a `Settings` scene and the menu-bar extra. It owns `AppServices` (database, recorder, processing queue, workspace model) and the `AppViewModel` `@StateObject` that the Settings tabs and the call watcher still use.
