@@ -35,7 +35,9 @@ public actor RecordingCoordinator {
     }
 
     /// Creates the conversation and its folder, then starts capturing into it.
-    public func start(source: CaptureSource, title: String? = nil) async throws -> Conversation {
+    public func start(
+        source: CaptureSource, title: String? = nil, calendarEventId: String? = nil
+    ) async throws -> Conversation {
         guard active == nil else { throw CaptureError.alreadyRecording }
 
         let startedAt = now()
@@ -43,6 +45,7 @@ public actor RecordingCoordinator {
             title: title ?? Self.defaultTitle(for: startedAt),
             state: .recording,
             startedAt: startedAt,
+            calendarEventId: calendarEventId,
             createdAt: startedAt,
             updatedAt: startedAt,
             captureSource: source
