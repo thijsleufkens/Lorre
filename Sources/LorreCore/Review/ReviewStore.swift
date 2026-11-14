@@ -117,8 +117,7 @@ public struct ReviewStore: Sendable {
     /// Deleted: outcomes that came from a model, are still `proposed` and were not edited.
     /// Approved, rejected, edited and user-added outcomes are never touched. Evidence segments that
     /// are not in the conversation's current transcript are dropped; an owner who is not a participant
-    /// becomes nil. `modelIdentifier` is accepted for the caller's bookkeeping but `Outcome` has no
-    /// field for it yet, so it is not stored.
+    /// becomes nil. `modelIdentifier` is stored on each new proposal as `proposedBy`.
     @discardableResult
     public func replaceProposals(
         conversationId: UUID,
@@ -126,7 +125,6 @@ public struct ReviewStore: Sendable {
         modelIdentifier: String,
         now: Date = Date()
     ) throws -> [Outcome] {
-        _ = modelIdentifier
         return try database.queue.write { db in
             guard try Conversation.exists(db, key: conversationId.uuidString) else {
                 throw ReviewError.conversationNotFound
@@ -164,7 +162,8 @@ public struct ReviewStore: Sendable {
                     evidenceSegmentIds: evidence.map(\.id),
                     evidenceStartMs: evidence.map(\.startMs).min(),
                     evidenceEndMs: evidence.map(\.endMs).max(),
-                    createdAt: now
+                    createdAt: now,
+                    proposedBy: modelIdentifier.isEmpty ? nil : modelIdentifier
                 )
                 try outcome.insert(db)
                 inserted.append(try Outcome.fetchOne(db, key: outcome.id.uuidString) ?? outcome)
