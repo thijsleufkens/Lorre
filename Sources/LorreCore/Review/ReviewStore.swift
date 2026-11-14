@@ -112,6 +112,70 @@ public struct ReviewStore: Sendable {
         }
     }
 
+    /// Replaces the model's untouched proposals with a new set, in one transaction.
+    ///
+    /// Deleted: outcomes that came from a model, are still `proposed` and were not edited.
+    /// Approved, rejected, edited and user-added outcomes are never touched. Evidence segments that
+    /// are not in the conversation's current transcript are dropped; an owner who is not a participant
+    /// becomes nil. `modelIdentifier` is accepted for the caller's bookkeeping but `Outcome` has no
+    /// field for it yet, so it is not stored.
+    @discardableResult
+    public func replaceProposals(
+        conversationId: UUID,
+        proposals: [ProposedOutcome],
+        modelIdentifier: String,
+        now: Date = Date()
+    ) throws -> [Outcome] {
+        _ = modelIdentifier
+        return try database.queue.write { db in
+            guard try Conversation.exists(db, key: conversationId.uuidString) else {
+                throw ReviewError.conversationNotFound
+            }
+            let segments = try Segment.fetchAll(db, sql: """
+                SELECT segment.* FROM segment
+                  JOIN transcriptVersion ON transcriptVersion.id = segment.transcriptVersionId
+                 WHERE transcriptVersion.conversationId = ? AND transcriptVersion.isCurrent = 1
+                """, arguments: [conversationId.uuidString])
+            let segmentsById = Dictionary(uniqueKeysWithValues: segments.map { ($0.id, $0) })
+            let participantIds = Set(try Participant.fetchAll(
+                db, sql: "SELECT * FROM participant WHERE conversationId = ?", arguments: [conversationId.uuidString]
+            ).map(\.id))
+
+            try db.execute(
+                sql: "DELETE FROM outcome WHERE conversationId = ? AND source = 'model' AND status = 'proposed' AND edited = 0",
+                arguments: [conversationId.uuidString]
+            )
+            let deleted = db.changesCount
+
+            var inserted: [Outcome] = []
+            for proposal in proposals {
+                let text = proposal.text.trimmingCharacters(in: .whitespacesAndNewlines)
+                guard !text.isEmpty else { continue }
+                let evidence = proposal.evidenceSegmentIds.compactMap { segmentsById[$0] }
+                let owner = proposal.ownerParticipantId.flatMap { participantIds.contains($0) ? $0 : nil }
+                let outcome = Outcome(
+                    conversationId: conversationId,
+                    kind: proposal.kind,
+                    text: text,
+                    ownerParticipantId: proposal.kind.hasOwner ? owner : nil,
+                    status: .proposed,
+                    edited: false,
+                    source: .model,
+                    evidenceSegmentIds: evidence.map(\.id),
+                    evidenceStartMs: evidence.map(\.startMs).min(),
+                    evidenceEndMs: evidence.map(\.endMs).max(),
+                    createdAt: now
+                )
+                try outcome.insert(db)
+                inserted.append(try Outcome.fetchOne(db, key: outcome.id.uuidString) ?? outcome)
+            }
+            if deleted > 0 || !inserted.isEmpty {
+                try Self.markChanged(db, conversationId: conversationId, now: now)
+            }
+            return inserted
+        }
+    }
+
     /// Removes an outcome the reviewer added by mistake.
     public func deleteOutcome(_ id: UUID, now: Date = Date()) throws {
         try database.queue.write { db in
