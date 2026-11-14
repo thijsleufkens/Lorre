@@ -27,8 +27,8 @@ final class OnboardingModelTests: XCTestCase {
     }
 
     func testNamePrefilledFromSettings() throws {
-        try settings.set("the coach", for: .userName)
-        XCTAssertEqual(OnboardingModel(settings: settings).name, "the coach")
+        try settings.set("Anna", for: .userName)
+        XCTAssertEqual(OnboardingModel(settings: settings).name, "Anna")
     }
 
     func testNextAndBackWalkTheSteps() {
@@ -62,12 +62,12 @@ final class OnboardingModelTests: XCTestCase {
     func testCompleteSavesTrimmedNameAndDoneFlag() throws {
         let model = OnboardingModel(settings: settings)
         model.next()
-        model.name = "  the coach "
+        model.name = "  Anna "
         model.next()
         model.complete()
         XCTAssertTrue(model.isCompleted)
         XCTAssertFalse(model.saveFailed)
-        XCTAssertEqual(try settings.string(.userName), "the coach")
+        XCTAssertEqual(try settings.string(.userName), "Anna")
         XCTAssertEqual(try settings.string(.onboardingDone), "1")
         XCTAssertFalse(OnboardingModel.isNeeded(settings: settings))
     }
