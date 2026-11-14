@@ -56,6 +56,14 @@ Recording goes through the menu-bar recorder (`Features/MenuBar/`: `RecorderMode
 
 The database is `~/Library/Application Support/Lorre/lorre.sqlite`. UUIDs are stored as uppercase text. Commands on the new store: `Lorre list [--json]`, `Lorre show <id>`, `Lorre process <id> [--no-export]`, `Lorre recover`, `Lorre import-legacy` (repeatable, never writes to `sessions/`); all take `--root <path>` for testing. A new subcommand must be added to `CLIRouting.subcommands` as well as `LorreCLI` (a test enforces it).
 
+The main window is the new workspace (`Features/Workspace/`: Today, Conversations; `Features/Review/`: the review of one conversation; `Features/People/`: people and the brief for the next conversation; `Features/Onboarding/`: first run). Models are `@MainActor @Observable` classes that go through the LorreCore stores and reload (`WorkspaceModel`, `ReviewModel`, `PeopleModel`); views stay thin. Every visible text of these screens comes from `Features/App/Strings.swift` in Dutch and English (`StringsTests` checks both languages and bans technical words). Raw error texts never reach the screen: `ViewFormat.friendlyError` maps them.
+
+Processing: with a microphone and a system track, `ConversationProcessor` transcribes each track separately (`Bridge/PerTrackTranscript.swift`): microphone segments belong to the user, the system track is diarized on its own. Anything else, or a per-track failure, takes the mix path. Afterwards `Bridge/ProposalRunner` asks the model named in the `proposalModel` setting for outcomes (`LorreCore/Proposal/`: `OutcomeProposer`, `TwoStepOutcomeProposer`, `OllamaTextGenerator`); empty setting means no proposals, which is the default because no tested model meets the thresholds (see `docs/superpowers/experiments/`). Measure a model with `Lorre eval` (`docs/eval.md`).
+
+Agents read records through `Lorre records`, `Lorre record <id>`, `Lorre mark-processed`, or the MCP server `Lorre mcp` (`docs/agents.md`). People: `LorreCore/People/PeopleStore.swift`.
+
+Work on this rebuild is split into packages with fixed contracts (`docs/superpowers/plans/2026-11-14-lorre-rebuild-m3-m7-packages.md`); screens must be checked in the running app after merging, since tests do not see layout.
+
 Signing: `LORRE_SIGN_IDENTITY` selects the code-signing identity for `scripts/package_macos_app.sh` (default ad-hoc). See `docs/signing.md`.
 
 ## Repository layout
