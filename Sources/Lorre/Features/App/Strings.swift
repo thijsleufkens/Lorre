@@ -142,6 +142,41 @@ struct Strings: Sendable {
     let onboardingStart: String
     let onboardingStartHelp: String
 
+    // MARK: People
+    let sectionPeople: String
+    let peopleEmpty: String
+    let peopleSearchPlaceholder: String
+    let peopleSearchHelp: String
+    let peopleNoMatches: String
+    let personNoSelection: String
+    let personNameHelp: String
+    let personOrganisationPlaceholder: String
+    let personOrganisationHelp: String
+    let personRolePlaceholder: String
+    let personRoleHelp: String
+    let personNotesHeader: String
+    let personNotesPlaceholder: String
+    let personNotesHelp: String
+    let nextConversationHeader: String
+    let groupMyActions: String
+    let groupTheirCommitments: String
+    let groupOpenPoints: String
+    let groupHooks: String
+    let groupAboutPerson: String
+    let groupLastDecisions: String
+    let briefEmpty: String
+    let briefItemHelp: String
+    let personConversationsHeader: String
+    let personConversationHelp: String
+    let personNoConversations: String
+    let noConversationYet: String
+    let mergePerson: String
+    let mergePersonHelp: String
+    let mergeConfirmButton: String
+    let linkedToPerson: String
+    let saveAsPerson: String
+    let unlinkPerson: String
+
     // MARK: Units
     let hourUnit: String
     let minuteUnit: String
@@ -333,6 +368,52 @@ struct Strings: Sendable {
         onboardingStart = t("Aan de slag", "Get started")
         onboardingStartHelp = t("Sluit dit scherm en begin met Lorre", "Close this screen and start using Lorre")
 
+        sectionPeople = t("Mensen", "People")
+        peopleEmpty = t(
+            "Hier verschijnen de mensen met wie je spreekt. Geef bij een gesprek een spreker een naam en bewaar die als persoon, dan staat die hier.",
+            "The people you talk to appear here. Give a speaker in a conversation a name and save them as a person, and they show up here."
+        )
+        peopleSearchPlaceholder = t("Zoek een persoon", "Search for a person")
+        peopleSearchHelp = t("Zoek op naam, organisatie of functie", "Search by name, organisation or role")
+        peopleNoMatches = t("Niemand gevonden.", "Nobody found.")
+        personNoSelection = t(
+            "Kies links een persoon om je op het volgende gesprek voor te bereiden.",
+            "Pick a person on the left to prepare for the next conversation."
+        )
+        personNameHelp = t("Klik om de naam aan te passen", "Click to change the name")
+        personOrganisationPlaceholder = t("Organisatie", "Organisation")
+        personOrganisationHelp = t("Bij welke organisatie hoort deze persoon?", "Which organisation does this person belong to?")
+        personRolePlaceholder = t("Functie", "Role")
+        personRoleHelp = t("Wat is de functie van deze persoon?", "What is this person's role?")
+        personNotesHeader = t("Aantekeningen", "Notes")
+        personNotesPlaceholder = t("Schrijf hier wat je over deze persoon wilt onthouden", "Write down what you want to remember about this person")
+        personNotesHelp = t("Je eigen aantekeningen over deze persoon", "Your own notes about this person")
+        nextConversationHeader = t("Voor het volgende gesprek", "For the next conversation")
+        groupMyActions = t("Wat ik nog moet doen", "What I still have to do")
+        groupTheirCommitments = t("Wat zij hebben beloofd", "What they promised")
+        groupOpenPoints = t("Openstaande punten", "Open points")
+        groupHooks = t("Hierop terugkomen", "To come back to")
+        groupAboutPerson = t("Over deze persoon", "About this person")
+        groupLastDecisions = t("Laatst besloten", "Decided last time")
+        briefEmpty = t(
+            "Er staat niets open met deze persoon. Na het nakijken van een gesprek verschijnt hier wat je moet onthouden.",
+            "Nothing is open with this person. After you review a conversation, what you need to remember shows up here."
+        )
+        briefItemHelp = t("Open het gesprek waar dit uit komt", "Open the conversation this came from")
+        personConversationsHeader = t("Gesprekken", "Conversations")
+        personConversationHelp = t("Open dit gesprek", "Open this conversation")
+        personNoConversations = t("Nog geen gesprekken met deze persoon.", "No conversations with this person yet.")
+        noConversationYet = t("Nog geen gesprek", "No conversation yet")
+        mergePerson = t("Voeg samen met…", "Merge with…")
+        mergePersonHelp = t(
+            "Voeg deze persoon samen met iemand anders, bijvoorbeeld als dezelfde persoon er twee keer in staat",
+            "Merge this person with someone else, for example when the same person is in the list twice"
+        )
+        mergeConfirmButton = t("Voeg samen", "Merge")
+        linkedToPerson = t("Staat in je lijst met mensen", "Is in your list of people")
+        saveAsPerson = t("Bewaar als persoon", "Save as person")
+        unlinkPerson = t("Koppeling verwijderen", "Remove link")
+
         hourUnit = t("u", "h")
         minuteUnit = t("min", "min")
         lessThanAMinute = t("< 1 min", "< 1 min")
@@ -397,6 +478,59 @@ struct Strings: Sendable {
         switch language {
         case .dutch: "Stap \(step) van \(total)"
         case .english: "Step \(step) of \(total)"
+        }
+    }
+
+    func conversationCount(_ n: Int) -> String {
+        switch (language, n) {
+        case (.dutch, 1): "1 gesprek"
+        case (.dutch, _): "\(n) gesprekken"
+        case (.english, 1): "1 conversation"
+        case (.english, _): "\(n) conversations"
+        }
+    }
+
+    func openItemCount(_ n: Int) -> String {
+        switch (language, n) {
+        case (.dutch, 1): "1 open punt"
+        case (.dutch, _): "\(n) open punten"
+        case (.english, 1): "1 open item"
+        case (.english, _): "\(n) open items"
+        }
+    }
+
+    func lastConversationOn(_ day: String) -> String {
+        switch language {
+        case .dutch: "Laatst gesproken op \(day)"
+        case .english: "Last spoke on \(day)"
+        }
+    }
+
+    func mergeConfirmTitle(from: String, into: String) -> String {
+        switch language {
+        case .dutch: "“\(from)” samenvoegen met “\(into)”?"
+        case .english: "Merge “\(from)” into “\(into)”?"
+        }
+    }
+
+    func mergeConfirmMessage(from: String, into: String) -> String {
+        switch language {
+        case .dutch: "“\(from)” verdwijnt uit je lijst. Alle gesprekken en afspraken van die persoon komen bij “\(into)” te staan. Dit kun je niet terugdraaien."
+        case .english: "“\(from)” disappears from your list. All conversations and agreements of that person move to “\(into)”. This cannot be undone."
+        }
+    }
+
+    func thisIsPerson(_ name: String) -> String {
+        switch language {
+        case .dutch: "Dit is \(name)"
+        case .english: "This is \(name)"
+        }
+    }
+
+    func viewPerson(_ name: String) -> String {
+        switch language {
+        case .dutch: "Bekijk \(name)"
+        case .english: "View \(name)"
         }
     }
 

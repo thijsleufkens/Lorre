@@ -57,6 +57,7 @@ struct WorkspaceView: View {
             Picker("", selection: $workspace.section) {
                 Text(strings.sectionToday).tag(WorkspaceSection.today)
                 Text(strings.sectionConversations).tag(WorkspaceSection.conversations)
+                Text(strings.sectionPeople).tag(WorkspaceSection.people)
             }
             .pickerStyle(.segmented)
             .labelsHidden()
@@ -81,6 +82,7 @@ struct WorkspaceView: View {
             switch workspace.section {
             case .today: TodayView(workspace: workspace, recorder: recorder)
             case .conversations: ConversationsView(workspace: workspace)
+            case .people: PeopleView(workspace: workspace)
             }
         }
     }

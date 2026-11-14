@@ -57,13 +57,15 @@ enum DS {
         /// Widest the Today and Conversations lists grow; wider windows get margins.
         static let contentMaxWidth: CGFloat = 860
         static let reviewListWidth: CGFloat = 460
-        static let sectionPickerWidth: CGFloat = 240
+        static let sectionPickerWidth: CGFloat = 320
         static let searchFieldMaxWidth: CGFloat = 420
         static let iconSlot: CGFloat = 22
         static let timeColumn: CGFloat = 48
         static let speakerColumn: CGFloat = 96
         static let recordDot: CGFloat = 8
         static let settingsFieldWidth: CGFloat = 280
+        static let peopleListWidth: CGFloat = 300
+        static let notesFieldMinHeight: CGFloat = 72
     }
 
     enum Radius {

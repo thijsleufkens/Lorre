@@ -66,13 +66,30 @@ public struct PersonBrief: Equatable, Sendable {
 }
 
 public struct PeopleStore: Sendable {
-    public enum PeopleError: Error, Equatable {
+    public enum PeopleError: Error, Equatable, LocalizedError {
         case personNotFound
         case participantNotFound
         /// The user is never a person in their own list.
         case userCannotBePerson
         case blankName
         case cannotMergeWithItself
+
+        /// Plain-language text in the user's language, for showing in the screens.
+        public var errorDescription: String? {
+            let dutch = LorreLanguage.current == .dutch
+            switch self {
+            case .personNotFound:
+                return dutch ? "Deze persoon bestaat niet meer." : "This person no longer exists."
+            case .participantNotFound:
+                return dutch ? "Deze deelnemer bestaat niet meer in dit gesprek." : "This participant is no longer in this conversation."
+            case .userCannotBePerson:
+                return dutch ? "Jij zelf staat niet in je lijst met mensen." : "You are not part of your own list of people."
+            case .blankName:
+                return dutch ? "Een persoon heeft een naam nodig." : "A person needs a name."
+            case .cannotMergeWithItself:
+                return dutch ? "Kies een andere persoon om mee samen te voegen." : "Choose another person to merge with."
+            }
+        }
     }
 
     let database: LorreDatabase
@@ -344,6 +361,9 @@ public struct PeopleStore: Sendable {
         text.folding(options: [.caseInsensitive, .diacriticInsensitive], locale: nil)
             .split(whereSeparator: \.isWhitespace).joined(separator: " ")
     }
+
+    /// Whether a speaker name is only a stand-in ("Spreker 1", "Speaker S1", "Ik") and not a real name.
+    public static func isPlaceholderName(_ name: String) -> Bool { isPlaceholder(name) }
 
     static func isPlaceholder(_ name: String) -> Bool {
         let folded = fold(name)
