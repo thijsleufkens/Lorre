@@ -279,47 +279,6 @@ final class AppViewModel: ObservableObject {
         }
     }
 
-    func cancelRecordingTapped() {
-        guard isRecording, !isStoppingRecording else { return }
-        isStoppingRecording = true
-        recorderStatusText = "Discarding recording…"
-        stopRecordingTimers()
-
-        Task { [weak self] in
-            guard let self else { return }
-            do {
-                try await self.dependencies.recorder.cancelRecording()
-                await self.dependencies.metrics.log(name: "record_cancelled")
-
-                self.isRecording = false
-                self.isStoppingRecording = false
-                self.currentRecordingStartedAt = nil
-                self.liveTranscriptPreview = nil
-                self.recordingElapsedSeconds = 0
-                self.recorderStatusText = "Ready to record"
-                self.selectedSessionID = nil
-                self.activeTranscript = nil
-                self.banner = AppBanner(
-                    kind: .info,
-                    title: "Recording cancelled",
-                    message: "The in-progress session was deleted and the recording was discarded."
-                )
-            } catch {
-                self.isRecording = false
-                self.isStoppingRecording = false
-                self.currentRecordingStartedAt = nil
-                self.liveTranscriptPreview = nil
-                self.recordingElapsedSeconds = 0
-                self.recorderStatusText = "Ready to record"
-                self.presentError(error, defaultTitle: "Could not cancel recording")
-                await self.dependencies.metrics.log(
-                    name: "record_cancel_failed",
-                    attributes: ["error": error.localizedDescription]
-                )
-            }
-        }
-    }
-
     func stopRecordingTapped() {
         guard isRecording, !isStoppingRecording else { return }
         isStoppingRecording = true
@@ -427,157 +386,6 @@ final class AppViewModel: ObservableObject {
         }
     }
 
-    func exportSelectedSession(format: ExportFormat) {
-        guard let session = selectedSession else { return }
-        guard let transcript = activeTranscript else {
-            banner = AppBanner(kind: .error, title: "No transcript yet", message: "Wait until processing completes before exporting.")
-            return
-        }
-        guard session.status == .ready else { return }
-        guard let destinationURL = chooseExportDestinationURL(session: session, format: format) else {
-            Task { [dependencies] in
-                await dependencies.metrics.log(name: "export_cancelled", sessionId: session.id, attributes: ["format": format.rawValue])
-            }
-            return
-        }
-        Task { [weak self] in
-            guard let self else { return }
-            do {
-                let exportedURL = try await self.dependencies.exporter.export(
-                    session: session,
-                    transcript: transcript,
-                    format: format,
-                    destinationURL: destinationURL
-                )
-
-                var updated = session
-                updated.exports.append(
-                    ExportRecord(format: format, fileName: exportedURL.lastPathComponent)
-                )
-                updated.updatedAt = Date()
-                updated.dirtyFlags = .clean
-                try await self.dependencies.store.updateSession(updated)
-                await self.reloadSessions(selectMostRecentIfNeeded: false)
-                self.selectedSessionID = updated.id
-                self.exportMessage = "Exported \(format.label) to \(exportedURL.lastPathComponent)"
-                self.banner = AppBanner(kind: .success, title: "Export complete", message: exportedURL.path(percentEncoded: false))
-                await self.dependencies.metrics.log(
-                    name: "export_succeeded",
-                    sessionId: updated.id,
-                    attributes: ["format": format.rawValue, "file": exportedURL.lastPathComponent]
-                )
-            } catch {
-                self.presentError(error, defaultTitle: "Export failed")
-                await self.dependencies.metrics.log(
-                    name: "export_failed",
-                    sessionId: session.id,
-                    attributes: ["format": format.rawValue, "error": error.localizedDescription]
-                )
-            }
-        }
-    }
-
-    func exportSelectedSessionWithDefaultShortcut() {
-        exportSelectedSession(format: .markdown)
-    }
-
-    func toggleSelectedSessionPlayback() {
-        guard canControlPlayback else { return }
-        guard let session = selectedSession else { return }
-
-        Task { [weak self] in
-            guard let self else { return }
-            do {
-                try await self.preparePlaybackIfNeeded(for: session)
-                if self.dependencies.playback.isPlaying {
-                    self.dependencies.playback.pause()
-                    self.refreshPlaybackState()
-                    self.stopPlaybackMonitor()
-                    await self.dependencies.metrics.log(name: "playback_paused", sessionId: session.id)
-                } else {
-                    try self.dependencies.playback.play()
-                    self.refreshPlaybackState()
-                    self.startPlaybackMonitor(sessionID: session.id)
-                    await self.dependencies.metrics.log(name: "playback_started", sessionId: session.id)
-                }
-            } catch {
-                self.presentError(error, defaultTitle: "Playback unavailable")
-                await self.dependencies.metrics.log(
-                    name: "playback_toggle_failed",
-                    sessionId: session.id,
-                    attributes: ["error": error.localizedDescription]
-                )
-            }
-        }
-    }
-
-    func stopSelectedSessionPlayback() {
-        guard selectedSession != nil else { return }
-        dependencies.playback.stop()
-        stopPlaybackMonitor()
-        refreshPlaybackState()
-    }
-
-    func pauseSelectedSessionPlayback() {
-        guard selectedSession != nil else { return }
-        dependencies.playback.pause()
-        stopPlaybackMonitor()
-        refreshPlaybackState()
-    }
-
-    func seekSelectedSessionPlayback(to startMs: Int, autoplay: Bool = true) {
-        guard canControlPlayback else { return }
-        guard let session = selectedSession else { return }
-
-        Task { [weak self] in
-            guard let self else { return }
-            do {
-                try await self.preparePlaybackIfNeeded(for: session)
-                self.dependencies.playback.seek(to: Double(startMs) / 1000)
-                self.refreshPlaybackState()
-                if autoplay {
-                    try self.dependencies.playback.play()
-                    self.refreshPlaybackState()
-                    self.startPlaybackMonitor(sessionID: session.id)
-                }
-                await self.dependencies.metrics.log(
-                    name: "playback_seek",
-                    sessionId: session.id,
-                    attributes: ["start_ms": "\(startMs)", "autoplay": autoplay ? "true" : "false"]
-                )
-            } catch {
-                self.presentError(error, defaultTitle: "Playback unavailable")
-            }
-        }
-    }
-
-    func seekSelectedSessionPlayback(toSeconds seconds: Double, autoplay: Bool = true) {
-        let clampedMs = Int(max(0, (seconds * 1000).rounded()))
-        seekSelectedSessionPlayback(to: clampedMs, autoplay: autoplay)
-    }
-
-    func seekSelectedSessionPlaybackBy(deltaSeconds: Double) {
-        guard canControlPlayback else { return }
-        guard let session = selectedSession else { return }
-        let wasPlaying = isAudioPlaying
-
-        Task { [weak self] in
-            guard let self else { return }
-            do {
-                try await self.preparePlaybackIfNeeded(for: session)
-                self.dependencies.playback.seek(to: self.dependencies.playback.currentTimeSeconds + deltaSeconds)
-                self.refreshPlaybackState()
-                if wasPlaying {
-                    try self.dependencies.playback.play()
-                    self.refreshPlaybackState()
-                    self.startPlaybackMonitor(sessionID: session.id)
-                }
-            } catch {
-                self.presentError(error, defaultTitle: "Playback unavailable")
-            }
-        }
-    }
-
     func setPlaybackRate(_ rate: Double) {
         let normalized = min(max(rate, 0.75), 1.5)
         dependencies.playback.setPlaybackRate(normalized)
@@ -592,20 +400,6 @@ final class AppViewModel: ObservableObject {
                 )
             }
         }
-    }
-
-    func revealSelectedSessionFiles() {
-        guard let sessionID = selectedSession?.id else { return }
-        revealFiles(for: sessionID)
-    }
-
-    func deleteSelectedSessionConfirmed() {
-        guard let sessionID = selectedSession?.id else { return }
-        deleteSession(sessionID)
-    }
-
-    func isPlaybackSegmentActive(_ segmentID: UUID) -> Bool {
-        activePlaybackSegmentID == segmentID
     }
 
     func createFolder(named name: String) {
@@ -705,110 +499,6 @@ final class AppViewModel: ObservableObject {
         }
     }
 
-    func renameSelectedSession(to newName: String) {
-        guard let sessionID = selectedSession?.id else { return }
-        renameSession(sessionID, to: newName)
-    }
-
-    func saveSelectedSessionNotes(_ notes: String) {
-        guard let sessionID = selectedSession?.id else { return }
-        saveSessionNotes(sessionID, notes: notes)
-    }
-
-    func renameSession(_ sessionID: UUID, to newName: String) {
-        guard var session = sessions.first(where: { $0.id == sessionID }) else { return }
-        let trimmed = newName.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty else { return }
-        guard session.title != trimmed else { return }
-
-        Task { [weak self] in
-            guard let self else { return }
-            do {
-                session.title = trimmed
-                session.updatedAt = Date()
-                session.dirtyFlags.titleEdited = true
-                try await self.dependencies.store.updateSession(session)
-                await self.reloadSessions(selectMostRecentIfNeeded: false)
-                await MainActor.run {
-                    self.banner = AppBanner(kind: .success, title: "Session renamed", message: trimmed)
-                }
-                await self.dependencies.metrics.log(name: "session_renamed", sessionId: session.id)
-            } catch {
-                await MainActor.run {
-                    self.presentError(error, defaultTitle: "Rename failed")
-                }
-            }
-        }
-    }
-
-    func saveSessionNotes(_ sessionID: UUID, notes: String) {
-        guard let index = sessions.firstIndex(where: { $0.id == sessionID }) else { return }
-        let original = sessions[index]
-        let trimmed = notes.trimmingCharacters(in: .whitespacesAndNewlines)
-        let normalized: String? = trimmed.isEmpty ? nil : trimmed
-        guard sessions[index].notes != normalized else { return }
-
-        var updated = sessions[index]
-        updated.notes = normalized
-        updated.updatedAt = Date()
-        sessions[index] = updated
-
-        Task { [weak self] in
-            guard let self else { return }
-            do {
-                try await self.dependencies.store.updateSession(updated)
-                await self.dependencies.metrics.log(
-                    name: "session_notes_saved",
-                    sessionId: sessionID,
-                    attributes: ["has_notes": normalized == nil ? "false" : "true"]
-                )
-                await MainActor.run {
-                    self.banner = AppBanner(
-                        kind: .success,
-                        title: normalized == nil ? "Notes cleared" : "Notes saved",
-                        message: normalized == nil
-                            ? "Session notes were removed."
-                            : "Session notes saved locally."
-                    )
-                }
-            } catch {
-                await MainActor.run {
-                    if let restoreIndex = self.sessions.firstIndex(where: { $0.id == sessionID }) {
-                        self.sessions[restoreIndex] = original
-                    }
-                    self.presentError(error, defaultTitle: "Could not save notes")
-                }
-                await self.reloadSessions(selectMostRecentIfNeeded: false)
-            }
-        }
-    }
-
-    func revealFiles(for sessionID: UUID) {
-        guard sessions.contains(where: { $0.id == sessionID }) else { return }
-
-        Task { [weak self] in
-            guard let self else { return }
-            let folderURL = await self.dependencies.store.sessionDirectoryURL(for: sessionID)
-            let opened: Bool
-            #if canImport(AppKit)
-            opened = NSWorkspace.shared.open(folderURL)
-            #else
-            opened = false
-            #endif
-
-            if opened {
-                await self.dependencies.metrics.log(name: "session_reveal_files", sessionId: sessionID)
-            } else {
-                await MainActor.run {
-                    self.presentError(
-                        LorreError.revealFilesFailed("Finder could not open \(folderURL.lastPathComponent)."),
-                        defaultTitle: "Could not open Finder"
-                    )
-                }
-            }
-        }
-    }
-
     func deleteSession(_ sessionID: UUID) {
         guard let session = sessions.first(where: { $0.id == sessionID }) else { return }
         let wasSelected = (selectedSessionID == sessionID)
@@ -848,10 +538,6 @@ final class AppViewModel: ObservableObject {
                 )
             }
         }
-    }
-
-    func clearBanner() {
-        banner = nil
     }
 
     func prepareModelsTapped() {
@@ -950,50 +636,6 @@ final class AppViewModel: ObservableObject {
                 )
             }
         }
-    }
-
-    func updateSegmentText(sessionID: UUID, segmentID: UUID, text: String) {
-        guard var transcript = activeTranscript, transcript.sessionId == sessionID else { return }
-        guard let index = transcript.segments.firstIndex(where: { $0.id == segmentID }) else { return }
-        guard transcript.segments[index].text != text else { return }
-        transcript.segments[index].text = text
-        transcript.segments[index].isEdited = true
-        transcript.segments[index].lastEditedAt = Date()
-        transcript.updatedAt = Date()
-        activeTranscript = transcript
-        markSessionDirty(sessionID: sessionID, transcriptEdited: true)
-        persistTranscript(transcript, sessionID: sessionID)
-    }
-
-    func assignSpeaker(sessionID: UUID, segmentID: UUID, speakerID: String) {
-        guard var transcript = activeTranscript, transcript.sessionId == sessionID else { return }
-        guard let index = transcript.segments.firstIndex(where: { $0.id == segmentID }) else { return }
-        transcript.segments[index].speakerId = speakerID
-        transcript.segments[index].sourceSpeakerId = speakerID
-        transcript.segments[index].isEdited = true
-        transcript.segments[index].lastEditedAt = Date()
-        transcript.updatedAt = Date()
-        activeTranscript = transcript
-        markSessionDirty(sessionID: sessionID, transcriptEdited: true, speakerEdited: true)
-        persistTranscript(transcript, sessionID: sessionID)
-    }
-
-    func renameSpeaker(sessionID: UUID, speakerID: String, to newName: String) {
-        guard var transcript = activeTranscript, transcript.sessionId == sessionID else { return }
-        let normalized = newName.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard let index = transcript.speakers.firstIndex(where: { $0.id == speakerID }) else { return }
-        transcript.speakers[index].displayName = normalized.isEmpty ? transcript.speakers[index].safeDisplayName : normalized
-        transcript.speakers[index].isUserRenamed = true
-        transcript.updatedAt = Date()
-        activeTranscript = transcript
-        markSessionDirty(sessionID: sessionID, speakerEdited: true)
-        persistTranscript(transcript, sessionID: sessionID)
-    }
-
-    func retryProcessingSelectedSession() {
-        guard let session = selectedSession else { return }
-        guard session.status == .error else { return }
-        launchProcessing(for: session.id)
     }
 
     func setSpeakerDiarizationEnabled(_ isEnabled: Bool) {
@@ -1473,16 +1115,6 @@ final class AppViewModel: ObservableObject {
         }
     }
 
-    func speakerSummaryBins(for transcript: TranscriptDocument?) -> [IndexRailSpeakerBin] {
-        guard let transcript else { return [] }
-        let counts = Dictionary(grouping: transcript.segments, by: { $0.speakerId ?? "UNK" })
-            .mapValues(\.count)
-        return transcript.speakers.compactMap { speaker in
-            guard let count = counts[speaker.id], count > 0 else { return nil }
-            return IndexRailSpeakerBin(variant: speaker.styleVariant, weight: Double(count))
-        }
-    }
-
     private func launchProcessing(for sessionID: UUID) {
         currentProcessingTasks[sessionID]?.cancel()
         let generation = UUID()
@@ -1717,34 +1349,6 @@ final class AppViewModel: ObservableObject {
         }
     }
 
-    private func filterMatches(_ session: SessionManifest) -> Bool {
-        switch selectedFilter {
-        case .all:
-            return true
-        case .processing:
-            return session.status == .processing
-        case .ready:
-            return session.status == .ready
-        case .errors:
-            return session.status == .error
-        }
-    }
-
-    private func folderMatches(_ session: SessionManifest) -> Bool {
-        guard let selectedFolderID else { return true }
-        if selectedFolderID == Self.unfiledFolderSelectionID {
-            return session.folderId == nil
-        }
-        return session.folderId == selectedFolderID
-    }
-
-    private func markSessionDirty(sessionID: UUID, transcriptEdited: Bool = false, speakerEdited: Bool = false) {
-        guard let index = sessions.firstIndex(where: { $0.id == sessionID }) else { return }
-        sessions[index].dirtyFlags.transcriptEdited = sessions[index].dirtyFlags.transcriptEdited || transcriptEdited
-        sessions[index].dirtyFlags.speakerEdited = sessions[index].dirtyFlags.speakerEdited || speakerEdited
-        sessions[index].updatedAt = Date()
-    }
-
     private func applyProcessingProgressLocally(sessionID: UUID, update: ProcessingUpdate) {
         guard let index = sessions.firstIndex(where: { $0.id == sessionID }) else { return }
         let now = Date()
@@ -1759,43 +1363,6 @@ final class AppViewModel: ObservableObject {
             progressLabel: update.label,
             progressFraction: update.fraction ?? sessions[index].processing.progressFraction
         )
-    }
-
-    private func persistTranscript(_ transcript: TranscriptDocument, sessionID: UUID) {
-        Task { [weak self] in
-            guard let self else { return }
-            do {
-                try await self.dependencies.store.saveTranscript(transcript)
-                if let index = self.sessions.firstIndex(where: { $0.id == sessionID }) {
-                    self.sessions[index].dirtyFlags.transcriptEdited = false
-                    self.sessions[index].dirtyFlags.speakerEdited = false
-                    self.sessions[index].transcriptFileName = "transcript.json"
-                    self.sessions[index].updatedAt = Date()
-                    try await self.dependencies.store.updateSession(self.sessions[index])
-                }
-            } catch {
-                await MainActor.run {
-                    self.presentError(error, defaultTitle: "Save failed")
-                }
-            }
-        }
-    }
-
-    private func preparePlaybackIfNeeded(for session: SessionManifest) async throws {
-        guard session.hasRetainedAudio else {
-            throw LorreError.playbackFailed("This session deleted its source audio after transcription for privacy.")
-        }
-        let sessionDirectory = await dependencies.store.sessionDirectoryURL(for: session.id)
-        let audioURL = sessionDirectory.appendingPathComponent(session.audioFileName)
-        guard FileManager.default.fileExists(atPath: audioURL.path(percentEncoded: false)) else {
-            throw LorreError.playbackFailed("Audio file is missing for this session.")
-        }
-
-        if dependencies.playback.preparedURL != audioURL {
-            dependencies.playback.stop()
-            try dependencies.playback.prepare(url: audioURL)
-        }
-        refreshPlaybackState()
     }
 
     private func refreshPlaybackState() {
@@ -1815,26 +1382,6 @@ final class AppViewModel: ObservableObject {
         activePlaybackSegmentID = transcript.segments.first { segment in
             currentMs >= segment.startMs && currentMs < max(segment.startMs + 1, segment.endMs)
         }?.id
-    }
-
-    private func startPlaybackMonitor(sessionID: UUID) {
-        stopPlaybackMonitor()
-        playbackMonitorTask = Task { [weak self] in
-            guard let self else { return }
-            while !Task.isCancelled {
-                await MainActor.run {
-                    guard self.selectedSessionID == sessionID else {
-                        self.stopPlaybackMonitor()
-                        return
-                    }
-                    self.refreshPlaybackState()
-                    if !self.isAudioPlaying {
-                        self.stopPlaybackMonitor()
-                    }
-                }
-                try? await Task.sleep(for: .milliseconds(120))
-            }
-        }
     }
 
     private func stopPlaybackMonitor() {
@@ -1990,21 +1537,6 @@ final class AppViewModel: ObservableObject {
     private func presentError(_ error: Error, defaultTitle: String) {
         let mapped = UserFacingErrorMapper.map(error, defaultTitle: defaultTitle)
         banner = AppBanner(kind: .error, title: mapped.title, message: mapped.message)
-    }
-
-    private func chooseExportDestinationURL(session: SessionManifest, format: ExportFormat) -> URL? {
-        #if canImport(AppKit)
-        let savePanel = NSSavePanel()
-        savePanel.canCreateDirectories = true
-        savePanel.isExtensionHidden = false
-        savePanel.nameFieldStringValue = dependencies.exporter.suggestedFileName(session: session, format: format)
-        savePanel.allowedContentTypes = [utType(for: format)]
-        let response = savePanel.runModal()
-        guard response == .OK else { return nil }
-        return savePanel.url
-        #else
-        return nil
-        #endif
     }
 
     private func utType(for format: ExportFormat) -> UTType {
