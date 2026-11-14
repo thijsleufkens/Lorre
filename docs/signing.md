@@ -58,7 +58,10 @@ This has to be checked by hand once; it is the reason for the whole exercise.
 If step 3 fails, note the result here and in the product spec's open questions: it affects how updates
 reach other users.
 
-**Result:** not yet verified.
+**Result (14 November 2026):** partly verified. Calendar access, granted in one build signed with
+`Lorre Local Signing`, was still there after installing the next build signed with the same certificate:
+no prompt, and the calendar was read. The microphone and system-audio check with a recording (steps 1–3)
+has not been done yet.
 
 ## Other identities in the keychain
 
