@@ -74,6 +74,18 @@ final class StringsTests: XCTestCase {
         XCTAssertEqual(en.selectedFragments(2), "2 parts selected")
     }
 
+    func testFirstRunAndRetryTextsExistInBothLanguages() {
+        XCTAssertEqual(Strings.dutch.retry, "Opnieuw proberen")
+        XCTAssertEqual(Strings.english.retry, "Try again")
+        XCTAssertEqual(Strings.dutch.onboardingStart, "Aan de slag")
+        XCTAssertEqual(Strings.english.onboardingStart, "Get started")
+        for strings in [Strings.dutch, Strings.english] {
+            // The permission step is text only: it must say that macOS asks, not point at buttons.
+            XCTAssertTrue(strings.onboardingPermissionsAsk.contains("macOS"))
+            XCTAssertNotEqual(strings.onboardingWelcomeBody, strings.onboardingNameBody)
+        }
+    }
+
     func testTextsWithValuesInThem() {
         XCTAssertTrue(Strings.dutch.noHits(for: "prijs").contains("prijs"))
         XCTAssertTrue(Strings.english.savedAt("~/Documents/Lorre").contains("~/Documents/Lorre"))

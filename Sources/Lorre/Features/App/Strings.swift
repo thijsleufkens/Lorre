@@ -16,6 +16,7 @@ struct Strings: Sendable {
     // MARK: Window
     let sectionToday: String
     let sectionConversations: String
+    let sectionPickerLabel: String
     let record: String
     let recordHelp: String
     let stop: String
@@ -115,6 +116,32 @@ struct Strings: Sendable {
     let proposalModel: String
     let proposalModelHelp: String
 
+    // MARK: Retry and plain-language errors
+    let retry: String
+    let retryHelp: String
+    let errorNoSpeech: String
+    let errorSilentMicrophone: String
+    let errorInterrupted: String
+    let errorRecovered: String
+    let errorMissingFile: String
+    let errorGeneric: String
+
+    // MARK: First run
+    let onboardingWelcomeTitle: String
+    let onboardingWelcomeBody: String
+    let onboardingNameTitle: String
+    let onboardingNameField: String
+    let onboardingNameBody: String
+    let onboardingPermissionsTitle: String
+    let onboardingPermissionsAsk: String
+    let onboardingPermissionsWhy: String
+    let onboardingPermissionsAgain: String
+    let onboardingNext: String
+    let onboardingNextHelp: String
+    let onboardingBackHelp: String
+    let onboardingStart: String
+    let onboardingStartHelp: String
+
     // MARK: Units
     let hourUnit: String
     let minuteUnit: String
@@ -126,6 +153,7 @@ struct Strings: Sendable {
 
         sectionToday = t("Vandaag", "Today")
         sectionConversations = t("Gesprekken", "Conversations")
+        sectionPickerLabel = t("Kies een onderdeel", "Choose a section")
         record = t("Opnemen", "Record")
         recordHelp = t("Begin met opnemen", "Start recording")
         stop = t("Stop", "Stop")
@@ -248,6 +276,63 @@ struct Strings: Sendable {
             "Name of a model in Ollama on this Mac, for example gemma4:e4b. Leave empty to add every point yourself. Nothing leaves this Mac."
         )
 
+        retry = t("Opnieuw proberen", "Try again")
+        retryHelp = t("Werk dit gesprek opnieuw uit", "Transcribe this conversation again")
+        errorNoSpeech = t(
+            "Er is geen spraak gevonden in deze opname. Stond het geluid aan? Neem het gesprek dan opnieuw op.",
+            "No speech was found in this recording. Was the sound on? If not, record the conversation again."
+        )
+        errorSilentMicrophone = t(
+            "Lorre hoort geen geluid van de microfoon. Geef Lorre toestemming in Systeeminstellingen onder Privacy en beveiliging > Microfoon (zet het uit en weer aan als het al aanstaat) en begin daarna een nieuwe opname.",
+            "Lorre is not hearing any sound from the microphone. Allow Lorre in System Settings under Privacy & Security > Microphone (switch it off and on again if it is already on), then start a new recording."
+        )
+        errorInterrupted = t(
+            "De opname werd onderbroken, bijvoorbeeld doordat Lorre werd afgesloten of de Mac opnieuw opstartte. Wat al was opgenomen is bewaard. Kies Opnieuw proberen om het uit te werken.",
+            "The recording was interrupted, for example because Lorre was closed or the Mac restarted. What was already recorded is saved. Choose Try again to transcribe it."
+        )
+        errorRecovered = t(
+            "Een onderbroken opname is teruggevonden. Wat al was opgenomen is bewaard en wordt nu uitgewerkt.",
+            "An interrupted recording was found again. What was already recorded is saved and is being transcribed now."
+        )
+        errorMissingFile = t(
+            "Het geluid van dit gesprek ontbreekt of kan niet worden gelezen. Probeer het nog eens. Lukt het niet, neem het gesprek dan opnieuw op.",
+            "The sound of this conversation is missing or cannot be read. Try again. If that does not work, record the conversation again."
+        )
+        errorGeneric = t(
+            "Er ging iets mis. Probeer het nog eens. Lukt het weer niet, start Lorre dan opnieuw op.",
+            "Something went wrong. Try again. If it fails again, restart Lorre."
+        )
+
+        onboardingWelcomeTitle = t("Welkom bij Lorre", "Welcome to Lorre")
+        onboardingWelcomeBody = t(
+            "Lorre neemt een gesprek op deze Mac op, schrijft uit wat er gezegd is en laat jou goedkeuren wat er is afgesproken. Er gaat niets van je Mac af.",
+            "Lorre records a conversation on this Mac, writes out what was said, and lets you approve what was agreed. Nothing leaves your Mac."
+        )
+        onboardingNameTitle = t("Hoe heet je?", "What is your name?")
+        onboardingNameField = t("Je naam", "Your name")
+        onboardingNameBody = t(
+            "Zo komt jouw naam te staan bij wat jij zelf zegt in een gesprek.",
+            "This is the name that goes with your own words in a conversation."
+        )
+        onboardingPermissionsTitle = t("Toestemming van je Mac", "Permission from your Mac")
+        onboardingPermissionsAsk = t(
+            "De eerste keer dat je opneemt, vraagt macOS om toegang tot de microfoon en om het geluid van de computer op te nemen.",
+            "The first time you record, macOS asks for access to the microphone and to record the sound of the computer."
+        )
+        onboardingPermissionsWhy = t(
+            "Allebei zijn nodig: de microfoon voor jouw stem, het geluid van de computer voor de andere kant van een online gesprek.",
+            "Both are needed: the microphone for your voice, the sound of the computer for the other side of an online call."
+        )
+        onboardingPermissionsAgain = t(
+            "Na een update kan macOS de vraag opnieuw stellen. Kies dan weer om het toe te staan.",
+            "After an update macOS may ask again. Just allow it again."
+        )
+        onboardingNext = t("Volgende", "Next")
+        onboardingNextHelp = t("Ga naar de volgende stap", "Go to the next step")
+        onboardingBackHelp = t("Ga terug naar de vorige stap", "Go back to the previous step")
+        onboardingStart = t("Aan de slag", "Get started")
+        onboardingStartHelp = t("Sluit dit scherm en begin met Lorre", "Close this screen and start using Lorre")
+
         hourUnit = t("u", "h")
         minuteUnit = t("min", "min")
         lessThanAMinute = t("< 1 min", "< 1 min")
@@ -305,6 +390,13 @@ struct Strings: Sendable {
         switch language {
         case .dutch: "Je vindt het in \(path)"
         case .english: "You can find it in \(path)"
+        }
+    }
+
+    func onboardingStepCounter(_ step: Int, of total: Int) -> String {
+        switch language {
+        case .dutch: "Stap \(step) van \(total)"
+        case .english: "Step \(step) of \(total)"
         }
     }
 
