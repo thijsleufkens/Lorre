@@ -178,6 +178,24 @@ struct ConversationProcessor: Sendable {
         return (transcript, manifest)
     }
 
+    /// Replaces the engine's stand-in names ("Speaker S1", "Unknown speaker") by names a person
+    /// would use ("Spreker 1", "Onbekend"). Names somebody gave are left alone.
+    static func withPlainSpeakerNames(_ transcript: TranscriptDocument, language: LorreLanguage) -> TranscriptDocument {
+        var result = transcript
+        result.speakers = transcript.speakers.map { speaker in
+            guard !speaker.isUserRenamed else { return speaker }
+            var renamed = speaker
+            if speaker.id == "UNK", speaker.displayName == "Unknown speaker" {
+                renamed.displayName = language == .dutch ? "Onbekend" : "Unknown"
+            } else if speaker.displayName == "Speaker \(speaker.id)",
+                      speaker.id.uppercased().hasPrefix("S"), let number = Int(speaker.id.dropFirst()) {
+                renamed.displayName = (language == .dutch ? "Spreker " : "Speaker ") + "\(number)"
+            }
+            return renamed
+        }
+        return result
+    }
+
     /// Stores the transcript as the current version and writes `transcript.md` and the automatic
     /// export. Returns the number of segments.
     private func persist(
@@ -187,6 +205,7 @@ struct ConversationProcessor: Sendable {
         tracks: [Track],
         options: Options
     ) async throws -> Int {
+        let transcript = Self.withPlainSpeakerNames(transcript, language: .current)
         let encoder = JSONEncoder()
         encoder.dateEncodingStrategy = .iso8601
         let segmentCount = try store.saveTranscript(

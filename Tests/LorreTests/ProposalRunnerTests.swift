@@ -49,3 +49,20 @@ final class ProposalRunnerTests: XCTestCase {
         XCTAssertEqual(before, after)
     }
 }
+
+final class PlainSpeakerNamesTests: XCTestCase {
+    func testStandInNamesBecomePlainAndGivenNamesStay() {
+        let document = TranscriptDocument(
+            sessionId: UUID(), sourceEngine: "test", segments: [],
+            speakers: [
+                SpeakerProfile(id: "S1", displayName: "Speaker S1", styleVariant: .filled, isUserRenamed: false),
+                SpeakerProfile(id: "UNK", displayName: "Unknown speaker", styleVariant: .filled, isUserRenamed: false),
+                SpeakerProfile(id: "S2", displayName: "Anna", styleVariant: .filled, isUserRenamed: true),
+            ]
+        )
+        let dutch = ConversationProcessor.withPlainSpeakerNames(document, language: .dutch)
+        XCTAssertEqual(dutch.speakers.map(\.displayName), ["Spreker 1", "Onbekend", "Anna"])
+        let english = ConversationProcessor.withPlainSpeakerNames(document, language: .english)
+        XCTAssertEqual(english.speakers.map(\.displayName), ["Speaker 1", "Unknown", "Anna"])
+    }
+}
