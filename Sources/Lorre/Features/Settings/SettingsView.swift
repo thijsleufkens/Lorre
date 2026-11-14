@@ -11,6 +11,8 @@ struct SettingsView: View {
                 .tabItem { Label("Speech & Models", systemImage: "waveform.and.mic") }
             SpeakersSettingsTab(viewModel: viewModel)
                 .tabItem { Label("Speakers", systemImage: "person.2") }
+            RecordsSettingsTab()
+                .tabItem { Label(Strings.current.recordsTab, systemImage: "doc.text") }
             AboutSettingsTab()
                 .tabItem { Label("About", systemImage: "info.circle") }
         }

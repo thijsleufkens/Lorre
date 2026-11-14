@@ -42,11 +42,28 @@ enum DS {
         static let statusPreparing = Color.dynamic(light: Color(hex: 0xB8893A), dark: Color(hex: 0xC29B3E))
         static let statusError = Color.dynamic(light: Color(hex: 0xB33F2A), dark: Color(hex: 0xE08667))
         static let statusIdle = fgTertiary
+
+        // Review: the selected outcome and the evidence inside its context
+        static let selectionFill = Color.dynamic(light: Color(hex: 0xE3E8D8), dark: Color(hex: 0x1B261F))
+        static let evidenceFill = Color.dynamic(light: Color(hex: 0xF3E2C4), dark: Color(hex: 0x3A3220))
+        static let matchFill = evidenceFill
     }
 
     enum Layout {
         static let menuBarPanelWidth: CGFloat = 320
         static let levelLabelWidth: CGFloat = 44
+        static let workspaceMinWidth: CGFloat = 980
+        static let workspaceMinHeight: CGFloat = 640
+        /// Widest the Today and Conversations lists grow; wider windows get margins.
+        static let contentMaxWidth: CGFloat = 860
+        static let reviewListWidth: CGFloat = 460
+        static let sectionPickerWidth: CGFloat = 240
+        static let searchFieldMaxWidth: CGFloat = 420
+        static let iconSlot: CGFloat = 22
+        static let timeColumn: CGFloat = 48
+        static let speakerColumn: CGFloat = 96
+        static let recordDot: CGFloat = 8
+        static let settingsFieldWidth: CGFloat = 280
     }
 
     enum Radius {
@@ -85,6 +102,10 @@ enum DS {
         // Mono (system SF Mono)
         static let timer = Font.system(size: 56, weight: .medium, design: .monospaced)
         static let timerCompact = Font.system(size: 18, weight: .semibold, design: .monospaced)
+        static let cardTitle = Font.system(size: 15, weight: .semibold)
+        static let outcomeText = Font.system(size: 14, weight: .regular)
+        static let outcomeTextStrong = Font.system(size: 14, weight: .semibold)
+        static let icon = Font.system(size: 14, weight: .medium)
         static let mono = Font.system(size: 11, weight: .regular, design: .monospaced)
         static let monoStrong = Font.system(size: 12, weight: .semibold, design: .monospaced)
     }

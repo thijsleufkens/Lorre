@@ -7,6 +7,10 @@ import UserNotifications
 @MainActor
 final class AppServices {
     let recorder: RecorderModel?
+    /// State behind the main window; nil when the database could not be opened.
+    let workspace: WorkspaceModel?
+    /// Small settings kept in the database (export folder, the user's name).
+    let settings: SettingsStore?
     /// Set when the conversation database could not be opened; recording is unavailable then.
     let startupError: String?
 
@@ -34,11 +38,15 @@ final class AppServices {
                 notify: Self.postNotification
             )
             recorder = model
+            workspace = WorkspaceModel(database: database, paths: paths, makePlayer: { EvidencePlayer() })
+            settings = SettingsStore(database: database)
             startupError = nil
             model.observeQueue()
             Task { await model.recoverAtLaunch(database: database) }
         } catch {
             recorder = nil
+            workspace = nil
+            settings = nil
             startupError = "Lorre could not open its database: \(error.localizedDescription)"
         }
     }
