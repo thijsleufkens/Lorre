@@ -122,7 +122,17 @@ cat > "$ENTITLEMENTS_PATH" <<ENTITLEMENTS
 ENTITLEMENTS
 
 chmod +x "$MACOS_DIR/$APP_NAME"
-codesign --force --deep --sign - --entitlements "$ENTITLEMENTS_PATH" "$APP_BUNDLE"
+# Ad-hoc signing ("-") ties the app's identity to the binary hash, so macOS forgets the
+# microphone and audio-capture permissions after every build. A fixed certificate keeps them.
+# See docs/signing.md.
+SIGN_IDENTITY="${LORRE_SIGN_IDENTITY:--}"
+if [[ "$SIGN_IDENTITY" == "-" ]]; then
+  echo "Signing: ad-hoc (permissions reset on every build; set LORRE_SIGN_IDENTITY to keep them)"
+else
+  echo "Signing with identity: $SIGN_IDENTITY"
+fi
+codesign --force --deep --sign "$SIGN_IDENTITY" --entitlements "$ENTITLEMENTS_PATH" "$APP_BUNDLE"
+codesign -d -r- "$APP_BUNDLE" 2>&1 | grep 'designated' || true
 
 echo "Created: $APP_BUNDLE"
 echo "Binary:  $MACOS_DIR/$APP_NAME"
