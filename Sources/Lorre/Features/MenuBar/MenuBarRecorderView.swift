@@ -9,7 +9,7 @@ struct MenuBarRecorderView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: DS.Space.x3) {
             header
-            if let message = model.message {
+            if let message = ViewFormat.friendlyError(model.message, strings: Strings.current) {
                 Text(message)
                     .font(DS.FontStyle.helper)
                     .foregroundStyle(DS.ColorToken.statusError)
@@ -34,6 +34,7 @@ struct MenuBarRecorderView: View {
             Text("Lorre")
                 .font(DS.FontStyle.wordmark)
                 .foregroundStyle(DS.ColorToken.serifInk)
+                .accessibilityAddTraits(.isHeader)
             Spacer()
             if case let .recording(since) = model.phase {
                 TimelineView(.periodic(from: since, by: 1)) { context in
@@ -100,6 +101,7 @@ struct MenuBarRecorderView: View {
             Text("Recent")
                 .font(DS.FontStyle.sectionLabel)
                 .foregroundStyle(DS.ColorToken.serifInk)
+                .accessibilityAddTraits(.isHeader)
             ForEach(model.rows) { row in
                 RecentRow(row: row) {
                     Task { await model.process(row.id) }
@@ -178,7 +180,8 @@ private struct RecentRow: View {
                     Button("Open") { NSWorkspace.shared.open(url) }
                 }
             case .interrupted, .failed:
-                Button(row.status == .failed ? "Retry" : "Transcribe", action: process)
+                Button(Strings.current.retry, action: process)
+                    .help(Strings.current.retryHelp)
             case .recording, .waiting, .processing:
                 EmptyView()
             }
@@ -193,8 +196,8 @@ private struct RecentRow: View {
         case .waiting: "Waiting to be transcribed"
         case .processing: "Transcribing…"
         case .ready: row.durationSeconds.map { "Ready · \(Int(($0 / 60).rounded())) min" } ?? "Ready"
-        case .interrupted: "Interrupted recording"
-        case .failed: row.error ?? "Transcription failed"
+        case .interrupted: ViewFormat.friendlyError(row.error, strings: Strings.current) ?? Strings.current.errorInterrupted
+        case .failed: ViewFormat.friendlyError(row.error, strings: Strings.current) ?? Strings.current.stateFailed
         }
     }
 

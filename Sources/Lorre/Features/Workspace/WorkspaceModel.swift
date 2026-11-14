@@ -38,6 +38,9 @@ final class WorkspaceModel {
         self.makePlayer = makePlayer
     }
 
+    /// The small settings kept in the same database (first-run state, the user's name).
+    var settings: SettingsStore { SettingsStore(database: database) }
+
     func refresh() {
         do {
             all = try ConversationStore(database: database).listConversations()

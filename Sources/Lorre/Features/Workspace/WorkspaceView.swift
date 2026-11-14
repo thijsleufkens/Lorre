@@ -6,21 +6,39 @@ struct WorkspaceView: View {
     @Bindable var workspace: WorkspaceModel
     let recorder: RecorderModel?
 
+    @State private var onboarding: OnboardingModel?
+
     private let strings = Strings.current
 
     var body: some View {
         VStack(spacing: 0) {
             topBar
             Divider()
-            if let message = recorder?.message {
+            if let message = ViewFormat.friendlyError(recorder?.message, strings: strings) {
                 MessageBar(text: message) { recorder?.message = nil }
             }
-            if let error = workspace.errorMessage {
+            if let error = ViewFormat.friendlyError(workspace.errorMessage, strings: strings) {
                 MessageBar(text: error, onDismiss: nil)
             }
             content
         }
         .background(DS.ColorToken.bgApp)
+        .sheet(isPresented: Binding(
+            get: { onboarding != nil },
+            set: { if !$0 { onboarding = nil } }
+        )) {
+            if let onboarding {
+                OnboardingView(model: onboarding)
+                    .onChange(of: onboarding.isCompleted) { _, done in
+                        if done { self.onboarding = nil }
+                    }
+            }
+        }
+        .task {
+            if OnboardingModel.isNeeded(settings: workspace.settings) {
+                onboarding = OnboardingModel(settings: workspace.settings)
+            }
+        }
         .task { workspace.refresh() }
         .task { await pollWhileBusy() }
         .onChange(of: recorder?.phase) { workspace.refresh() }
@@ -35,12 +53,14 @@ struct WorkspaceView: View {
             Text("Lorre")
                 .font(DS.FontStyle.wordmark)
                 .foregroundStyle(DS.ColorToken.serifInk)
+                .accessibilityAddTraits(.isHeader)
             Picker("", selection: $workspace.section) {
                 Text(strings.sectionToday).tag(WorkspaceSection.today)
                 Text(strings.sectionConversations).tag(WorkspaceSection.conversations)
             }
             .pickerStyle(.segmented)
             .labelsHidden()
+            .accessibilityLabel(strings.sectionPickerLabel)
             .frame(width: DS.Layout.sectionPickerWidth)
             Spacer()
             RecordControl(recorder: recorder)
@@ -146,6 +166,7 @@ struct RecordControl: View {
                 Circle()
                     .fill(enabled ? DS.ColorToken.accentLive : DS.ColorToken.fgTertiary)
                     .frame(width: DS.Layout.recordDot, height: DS.Layout.recordDot)
+                    .accessibilityHidden(true)
                 Text(title)
             }
         }

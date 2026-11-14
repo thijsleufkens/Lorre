@@ -12,6 +12,8 @@ public struct SettingsStore: Sendable {
         case deleteAudioAfterApproval
         /// Name of the local model that proposes outcomes; empty or missing means no proposals.
         case proposalModel
+        /// "1" once the first-run screens have been completed.
+        case onboardingDone
     }
 
     let database: LorreDatabase

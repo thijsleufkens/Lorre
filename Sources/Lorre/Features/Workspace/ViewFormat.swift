@@ -80,6 +80,61 @@ enum ViewFormat {
         }
     }
 
+    // MARK: Errors and retry
+
+    /// The kinds of trouble Lorre can explain in plain words.
+    enum ErrorKind: Equatable {
+        case noSpeech, silentMicrophone, interrupted, recovered, missingFile, other
+    }
+
+    /// Recognises the raw messages written by the recorder and the processing code. The raw text is
+    /// English and technical; it is only ever matched here, never shown.
+    static func errorKind(_ raw: String) -> ErrorKind {
+        let text = raw.lowercased()
+        func has(_ parts: String...) -> Bool { parts.contains { text.contains($0) } }
+
+        if has("recovered") && has("being transcribed") { return .recovered }
+        if has("not receiving any sound from the microphone", "own voice was not recorded",
+               "microphone access is required") {
+            return .silentMicrophone
+        }
+        if has("no speech") { return .noSpeech }
+        if has("interrupted before it was stopped", "found on disk without a conversation") {
+            return .interrupted
+        }
+        if has("no audio to transcribe", "no audio was captured", "recorded audio was not captured",
+               "could not be written", "could not write", "could not load recorded audio",
+               "stems are incomplete", "no such file", "file is missing", "does not exist") {
+            return .missingFile
+        }
+        return .other
+    }
+
+    /// One calm sentence with what to do next for a raw error message; nil when there is no message.
+    /// Unknown messages get a generic sentence, the raw text is never part of the result.
+    static func friendlyError(_ raw: String?, strings: Strings) -> String? {
+        guard let raw, !raw.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return nil }
+        switch errorKind(raw) {
+        case .noSpeech: return strings.errorNoSpeech
+        case .silentMicrophone: return strings.errorSilentMicrophone
+        case .interrupted: return strings.errorInterrupted
+        case .recovered: return strings.errorRecovered
+        case .missingFile: return strings.errorMissingFile
+        case .other: return strings.errorGeneric
+        }
+    }
+
+    /// Whether the user can ask for processing again: an interrupted recording, or a failed run.
+    static func isRetryable(_ conversation: Conversation) -> Bool {
+        conversation.state == .interrupted || (conversation.state == .processing && conversation.lastError != nil)
+    }
+
+    /// The state text of a conversation in progress; while it is queued or running it says it is being
+    /// written out, whatever an earlier failure left behind.
+    static func progressLabel(_ conversation: Conversation, isQueuedOrRunning: Bool, _ strings: Strings) -> String {
+        isQueuedOrRunning ? strings.stateProcessing : stateLabel(conversation, strings)
+    }
+
     /// Whether there is a transcript to review.
     static func isReviewable(_ conversation: Conversation) -> Bool {
         switch conversation.state {
