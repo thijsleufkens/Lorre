@@ -8,10 +8,19 @@ struct LorreApp: App {
     @StateObject private var viewModel = AppViewModel(dependencies: LorreApp.dependencies)
     @State private var services = AppServices(dependencies: LorreApp.dependencies)
 
+    @ViewBuilder private var mainContent: some View {
+        if let workspace = services.workspace {
+            WorkspaceView(workspace: workspace, recorder: services.recorder)
+        } else {
+            Text(services.startupError ?? Strings.current.recorderUnavailable)
+                .padding(DS.Space.x8)
+        }
+    }
+
     var body: some Scene {
         WindowGroup("Lorre") {
-            AppShellView(viewModel: viewModel)
-                .frame(minWidth: 1120, minHeight: 760)
+            mainContent
+                .frame(minWidth: DS.Layout.workspaceMinWidth, minHeight: DS.Layout.workspaceMinHeight)
                 .preferredColorScheme(nil)
                 .environment(\.recorderModel, services.recorder)
                 .task {
@@ -28,6 +37,7 @@ struct LorreApp: App {
 
         Settings {
             SettingsView(viewModel: viewModel)
+                .environment(\.settingsStore, services.settings)
         }
 
         MenuBarExtra {
