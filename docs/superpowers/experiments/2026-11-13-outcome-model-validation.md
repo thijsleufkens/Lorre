@@ -123,3 +123,38 @@ Reading:
 
 Scripts, transcripts and raw outputs are kept outside the repository because they contain the
 conversation itself.
+
+## Addendum 2026-11-14: per-track speakers and the two-step proposer
+
+Same conversation, same reference, `gemma4:e4b`, now through the built pipeline (`Lorre process` on a copy
+of the data, then `Lorre propose --dry-run`).
+
+**Speakers.** Per-track processing gave 464 segments: 192 from the microphone track (the user) and 272
+from the system track (one other speaker). Processing 29 minutes took 1 min 51 s on the M1. The mono-mix
+path had labelled everything as one speaker.
+
+**Proposals, three runs of the two-step proposer:**
+
+| Run | Items | Actions found (of 3) | Actions correct (of 3) | Decision (of 1) | Time |
+|---|---|---|---|---|---|
+| 1, as built | 25 | 3 | 1 | 0 | 20 min (machine also building) |
+| 2, with owner fallbacks and name rules | 7 | 2 | 2 | 0 | 15 min |
+| 3, plus a guard against lumped consolidation | 20 | 2 | 2 | 0 | 16 min |
+
+- Run 1: the two commitments of the other person lost their owner because the model translated the
+  placeholder name ("Spreker 1" became "Speaker 1"). Fixed in the matcher, plus two rules: my action is
+  always the user's, and a commitment falls back to the only other person.
+- Run 2: the consolidation step poured every candidate of a kind into one item (seven items, each a
+  paragraph). The proposer now distrusts a consolidation in which one item merges more than three
+  candidates and falls back to the step-1 candidates.
+- Run 3: owners are right, sentences are readable, noise is far below the 42–69 items of the naive chunked
+  runs. One commitment and the decision are still missed, and identical input does not give identical
+  output between runs.
+
+**Reading.** The two-step design and correct speakers remove the worst failures (swapped roles, quotes,
+dozens of facts), but this model still misses one in three actions and the decision, and takes about a
+quarter of an hour on this hardware. The thresholds (80% recall with the right owner) are not met.
+Proposals therefore stay off by default: the setting is empty and review by hand is the normal path.
+`Lorre eval` exists to repeat this measurement when a better model is available. The placeholder name
+"Ik" for the user reads badly in generated sentences ("Ik's naam"); recordings made after the first-run
+screen carry the user's real name.
