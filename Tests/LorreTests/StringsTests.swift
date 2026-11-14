@@ -91,4 +91,25 @@ final class StringsTests: XCTestCase {
         XCTAssertTrue(Strings.english.savedAt("~/Documents/Lorre").contains("~/Documents/Lorre"))
         XCTAssertTrue(Strings.dutch.playFrom("21:26").contains("21:26"))
     }
+
+    func testPeopleTextsAndPlurals() {
+        XCTAssertEqual(Strings.dutch.sectionPeople, "Mensen")
+        XCTAssertEqual(Strings.english.sectionPeople, "People")
+        XCTAssertEqual(Strings.dutch.conversationCount(0), "0 gesprekken")
+        XCTAssertEqual(Strings.dutch.conversationCount(1), "1 gesprek")
+        XCTAssertEqual(Strings.dutch.conversationCount(2), "2 gesprekken")
+        XCTAssertEqual(Strings.english.conversationCount(1), "1 conversation")
+        XCTAssertEqual(Strings.english.conversationCount(2), "2 conversations")
+        XCTAssertEqual(Strings.dutch.openItemCount(1), "1 open punt")
+        XCTAssertEqual(Strings.dutch.openItemCount(2), "2 open punten")
+        XCTAssertEqual(Strings.english.openItemCount(1), "1 open item")
+        XCTAssertEqual(Strings.english.openItemCount(0), "0 open items")
+        XCTAssertEqual(Strings.dutch.thisIsPerson("Anna"), "Dit is Anna")
+        XCTAssertEqual(Strings.english.viewPerson("Anna"), "View Anna")
+        for strings in [Strings.dutch, Strings.english] {
+            XCTAssertTrue(strings.mergeConfirmTitle(from: "A", into: "B").contains("A"))
+            XCTAssertTrue(strings.mergeConfirmMessage(from: "A", into: "B").contains("B"))
+            XCTAssertTrue(strings.lastConversationOn("8 okt").contains("8 okt"))
+        }
+    }
 }

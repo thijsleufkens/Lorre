@@ -69,7 +69,7 @@ final class WorkspaceModelTests: XCTestCase {
 
     func testSectionDefaultsToToday() {
         XCTAssertEqual(workspace.section, .today)
-        XCTAssertEqual(WorkspaceSection.allCases, [.today, .conversations])
+        XCTAssertEqual(WorkspaceSection.allCases, [.today, .conversations, .people])
     }
 
     private func transcribe(_ conversation: Conversation, text: String) throws {
@@ -151,5 +151,48 @@ final class WorkspaceModelTests: XCTestCase {
         workspace.closeReview()
         XCTAssertTrue(workspace.toReview.isEmpty)
         XCTAssertEqual(workspace.all.first?.conversation.state, .approved)
+    }
+
+    func testShowPersonClosesTheReviewSwitchesSectionAndSelects() throws {
+        let fixture = try ReviewFixture()
+        defer { fixture.cleanUp() }
+        let workspace = WorkspaceModel(database: fixture.database, paths: fixture.paths) { FakeEvidencePlayer() }
+        workspace.refresh()
+        workspace.open(fixture.conversation.id)
+        let review = try XCTUnwrap(workspace.review)
+        review.saveAsPerson(fixture.anna.id)
+        XCTAssertNil(review.errorMessage)
+
+        review.showPerson(of: fixture.anna.id)
+
+        XCTAssertNil(workspace.review)
+        XCTAssertEqual(workspace.section, .people)
+        let personID = try XCTUnwrap(workspace.people.selectedPersonID)
+        XCTAssertEqual(workspace.people.brief?.person.name, "Anna")
+        XCTAssertEqual(workspace.people.brief?.person.id, personID)
+        XCTAssertEqual(workspace.people.brief?.conversations.map(\.id), [fixture.conversation.id])
+    }
+
+    func testRefreshReloadsThePeople() throws {
+        let fixture = try ReviewFixture()
+        defer { fixture.cleanUp() }
+        let workspace = WorkspaceModel(database: fixture.database, paths: fixture.paths) { FakeEvidencePlayer() }
+        workspace.refresh()
+        XCTAssertTrue(workspace.people.people.isEmpty)
+
+        _ = try PeopleStore(database: fixture.database).createPerson(from: fixture.anna.id)
+        workspace.refresh()
+        XCTAssertEqual(workspace.people.people.map(\.person.name), ["Anna"])
+        XCTAssertEqual(workspace.people.allPeople.count, 1)
+    }
+
+    func testShowPersonWithoutAnOpenReviewStillSwitches() throws {
+        let fixture = try ReviewFixture()
+        defer { fixture.cleanUp() }
+        let workspace = WorkspaceModel(database: fixture.database, paths: fixture.paths) { FakeEvidencePlayer() }
+        let person = try PeopleStore(database: fixture.database).createPerson(from: fixture.anna.id)
+        workspace.showPerson(person.id)
+        XCTAssertEqual(workspace.section, .people)
+        XCTAssertEqual(workspace.people.selectedPersonID, person.id)
     }
 }

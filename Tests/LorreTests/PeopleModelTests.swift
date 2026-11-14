@@ -111,4 +111,17 @@ final class PeopleModelTests: XCTestCase {
         XCTAssertNil(model.brief)
         XCTAssertEqual(model.people.count, 1)
     }
+
+    func testVisibleGroupsLeaveEmptyOnesOutAndMergeTargetsExcludeTheSelected() {
+        XCTAssertTrue(model.visibleGroups.isEmpty, "nothing selected")
+        model.select(annaID)
+        XCTAssertEqual(model.visibleGroups, [.myActions])
+        XCTAssertFalse(model.isBriefEmpty)
+        XCTAssertEqual(model.items(.myActions).map(\.outcome.text), ["Mailen Anna"])
+        XCTAssertTrue(model.items(.hooks).isEmpty)
+        XCTAssertEqual(model.mergeTargets.map(\.person.name), ["Bram"])
+        model.searchText = "zzz"
+        XCTAssertEqual(model.mergeTargets.map(\.person.name), ["Bram"], "the search does not hide merge targets")
+        XCTAssertEqual(model.allPeople.count, 2)
+    }
 }

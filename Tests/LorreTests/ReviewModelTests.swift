@@ -473,4 +473,76 @@ final class ReviewModelTests: XCTestCase {
         XCTAssertEqual(exported.record.recordVersion, 2)
         XCTAssertEqual(exported.record.conversation.title, "Aangepaste titel")
     }
+
+    // MARK: People
+
+    /// A second conversation with a person called "Anna Jansen", so "Anna" has a suggestion.
+    @discardableResult
+    private func addPersonAnnaJansen() throws -> Person {
+        let other = Conversation(title: "Eerder", state: .approved, startedAt: Date(timeIntervalSince1970: 1_700_000_000))
+        try fixture.store.save(other)
+        let participant = Participant(conversationId: other.id, name: "Anna Jansen")
+        try fixture.store.saveParticipants([participant])
+        return try PeopleStore(database: fixture.database).createPerson(from: participant.id)
+    }
+
+    func testSaveAsPersonLinksTheParticipant() throws {
+        XCTAssertTrue(model.canSaveAsPerson(fixture.anna))
+        model.saveAsPerson(fixture.anna.id)
+
+        XCTAssertNil(model.errorMessage)
+        let anna = try XCTUnwrap(model.participants.first { $0.id == fixture.anna.id })
+        XCTAssertNotNil(anna.personId)
+        XCTAssertEqual(model.person(of: anna)?.name, "Anna")
+        XCTAssertFalse(model.canSaveAsPerson(anna), "already linked")
+        XCTAssertEqual(try PeopleStore(database: fixture.database).people().count, 1)
+    }
+
+    func testTheUserAndStandInNamesCannotBeSavedAsPerson() throws {
+        XCTAssertFalse(model.canSaveAsPerson(fixture.thijs))
+        model.rename(fixture.anna.id, to: "Spreker 2")
+        let renamed = try XCTUnwrap(model.participants.first { $0.id == fixture.anna.id })
+        XCTAssertFalse(model.canSaveAsPerson(renamed))
+
+        model.saveAsPerson(fixture.thijs.id)
+        XCTAssertNotNil(model.errorMessage, "the store refuses the user")
+        XCTAssertNil(model.person(of: fixture.thijs))
+    }
+
+    func testSuggestionsLinkAndUnlink() throws {
+        let jansen = try addPersonAnnaJansen()
+        model.load()
+        XCTAssertEqual(model.personSuggestions(for: fixture.anna.id).map(\.name), ["Anna Jansen"])
+        XCTAssertTrue(model.personSuggestions(for: fixture.thijs.id).isEmpty)
+
+        model.link(fixture.anna.id, to: jansen.id)
+        let linked = try XCTUnwrap(model.participants.first { $0.id == fixture.anna.id })
+        XCTAssertEqual(model.person(of: linked)?.id, jansen.id)
+        XCTAssertTrue(model.personSuggestions(for: fixture.anna.id).isEmpty, "the linked person is no suggestion")
+
+        model.unlink(fixture.anna.id)
+        let unlinked = try XCTUnwrap(model.participants.first { $0.id == fixture.anna.id })
+        XCTAssertNil(unlinked.personId)
+        XCTAssertNil(model.person(of: unlinked))
+        XCTAssertEqual(model.personSuggestions(for: fixture.anna.id).count, 1)
+    }
+
+    func testLinkingToAPersonThatIsGoneReportsAnError() {
+        model.link(fixture.anna.id, to: UUID())
+        XCTAssertNotNil(model.errorMessage)
+        XCTAssertNil(model.participants.first { $0.id == fixture.anna.id }?.personId)
+    }
+
+    func testShowPersonReportsTheLinkedPersonOnly() throws {
+        var shown: [UUID] = []
+        model.onShowPerson = { shown.append($0) }
+
+        model.showPerson(of: fixture.anna.id)
+        XCTAssertTrue(shown.isEmpty, "not linked")
+
+        model.saveAsPerson(fixture.anna.id)
+        model.showPerson(of: fixture.anna.id)
+        let personID = try XCTUnwrap(model.participants.first { $0.id == fixture.anna.id }?.personId)
+        XCTAssertEqual(shown, [personID])
+    }
 }

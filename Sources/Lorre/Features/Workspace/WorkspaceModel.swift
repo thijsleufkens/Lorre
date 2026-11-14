@@ -3,7 +3,7 @@ import LorreCore
 import Observation
 
 enum WorkspaceSection: String, CaseIterable {
-    case today, conversations
+    case today, conversations, people
 }
 
 /// State behind the main window: which conversations wait, which are busy, search, and the
@@ -22,6 +22,8 @@ final class WorkspaceModel {
     private(set) var searchHits: [SearchHit] = []
     private(set) var review: ReviewModel?
     private(set) var errorMessage: String?
+    /// The people list and the page of one person.
+    let people: PeopleModel
 
     /// Setting it runs the search.
     var searchText: String = "" {
@@ -36,6 +38,7 @@ final class WorkspaceModel {
         self.database = database
         self.paths = paths
         self.makePlayer = makePlayer
+        self.people = PeopleModel(database: database)
     }
 
     /// The small settings kept in the same database (first-run state, the user's name).
@@ -52,6 +55,7 @@ final class WorkspaceModel {
             errorMessage = error.localizedDescription
         }
         runSearch()
+        people.load()
     }
 
     func open(_ conversationID: UUID) {
@@ -59,8 +63,18 @@ final class WorkspaceModel {
         let model = ReviewModel(
             conversationID: conversationID, database: database, paths: paths, player: makePlayer()
         )
+        model.onShowPerson = { [weak self] id in self?.showPerson(id) }
         model.load()
         review = model
+    }
+
+    /// Closes the review, switches to the People section and selects this person.
+    func showPerson(_ id: UUID) {
+        review?.stopPlayback()
+        review = nil
+        section = .people
+        refresh()
+        people.select(id)
     }
 
     func closeReview() {

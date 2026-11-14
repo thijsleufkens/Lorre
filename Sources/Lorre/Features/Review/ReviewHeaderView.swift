@@ -83,9 +83,16 @@ struct ReviewHeaderView: View {
                             }
                         }
                     }
+                    personItems(for: participant)
                 } label: {
                     HStack(spacing: DS.Space.x1) {
-                        if participant.isUser { Image(systemName: "person.fill").accessibilityHidden(true) }
+                        if participant.isUser {
+                            Image(systemName: "person.fill").accessibilityHidden(true)
+                        } else if review.person(of: participant) != nil {
+                            Image(systemName: "person.crop.circle")
+                                .accessibilityLabel(strings.linkedToPerson)
+                                .help(strings.linkedToPerson)
+                        }
                         Text(participant.name)
                     }
                     .font(DS.FontStyle.control)
@@ -100,6 +107,26 @@ struct ReviewHeaderView: View {
                 .menuIndicator(.hidden)
                 .fixedSize()
                 .help(strings.participantMenuHelp)
+            }
+        }
+    }
+
+    /// Menu items that tie a participant to a person in the list of people. Never for the user.
+    @ViewBuilder private func personItems(for participant: Participant) -> some View {
+        if !participant.isUser {
+            let linked = review.person(of: participant)
+            let suggestions = review.personSuggestions(for: participant.id)
+            if linked != nil || review.canSaveAsPerson(participant) || !suggestions.isEmpty {
+                Divider()
+            }
+            if let linked {
+                Button(strings.viewPerson(linked.name)) { review.showPerson(of: participant.id) }
+                Button(strings.unlinkPerson) { review.unlink(participant.id) }
+            } else if review.canSaveAsPerson(participant) {
+                Button(strings.saveAsPerson) { review.saveAsPerson(participant.id) }
+            }
+            ForEach(suggestions) { person in
+                Button(strings.thisIsPerson(person.name)) { review.link(participant.id, to: person.id) }
             }
         }
     }

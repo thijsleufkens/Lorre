@@ -37,6 +37,12 @@ final class ReviewModel {
     @ObservationIgnored private let exporter: RecordExporter
     @ObservationIgnored private let language: LorreLanguage
     @ObservationIgnored private var audioURL: URL?
+    /// Set by the workspace: switches to the People section with this person selected.
+    @ObservationIgnored var onShowPerson: (@MainActor (UUID) -> Void)?
+    /// The people the participants are linked to, by person id.
+    private var linkedPeople: [UUID: Person] = [:]
+    /// People each participant might be, by participant id.
+    private var suggestions: [UUID: [Person]] = [:]
 
     init(
         conversationID: UUID,
@@ -105,6 +111,14 @@ final class ReviewModel {
             segments = try store.currentSegments(conversationId: conversationID)
             outcomes = try review.outcomes(conversationId: conversationID, includingRejected: false)
             audioURL = AudioLocator.playableURL(tracks: try store.tracks(conversationId: conversationID), paths: paths)
+            let people = PeopleStore(database: database)
+            let linkedIDs = Set(participants.compactMap(\.personId))
+            linkedPeople = Dictionary(
+                uniqueKeysWithValues: try people.people().map(\.person).filter { linkedIDs.contains($0.id) }.map { ($0.id, $0) }
+            )
+            suggestions = Dictionary(
+                uniqueKeysWithValues: try participants.map { ($0.id, try people.suggestions(for: $0.id)) }
+            )
         } catch {
             errorMessage = error.localizedDescription
         }
@@ -262,6 +276,43 @@ final class ReviewModel {
 
     func assign(segmentID: UUID, to participantID: UUID?) {
         perform { try review.assignSegment(segmentID, to: participantID) }
+    }
+
+    // MARK: People
+
+    private var peopleStore: PeopleStore { PeopleStore(database: database) }
+
+    /// The person this participant is linked to, if any.
+    func person(of participant: Participant) -> Person? {
+        participant.personId.flatMap { linkedPeople[$0] }
+    }
+
+    /// People this participant might be (same name or first name). None for the user or a stand-in name.
+    func personSuggestions(for participantID: UUID) -> [Person] {
+        suggestions[participantID] ?? []
+    }
+
+    /// A participant can be saved as a person when it is not you, not linked yet and has a real name.
+    func canSaveAsPerson(_ participant: Participant) -> Bool {
+        !participant.isUser && participant.personId == nil && !PeopleStore.isPlaceholderName(participant.name)
+    }
+
+    func saveAsPerson(_ participantID: UUID) {
+        perform(editsRecord: false) { _ = try peopleStore.createPerson(from: participantID) }
+    }
+
+    func link(_ participantID: UUID, to personID: UUID) {
+        perform(editsRecord: false) { _ = try peopleStore.link(participant: participantID, toPerson: personID) }
+    }
+
+    func unlink(_ participantID: UUID) {
+        perform(editsRecord: false) { try peopleStore.unlink(participant: participantID) }
+    }
+
+    /// Opens the page of the person this participant is linked to.
+    func showPerson(of participantID: UUID) {
+        guard let personID = participants.first(where: { $0.id == participantID })?.personId else { return }
+        onShowPerson?(personID)
     }
 
     // MARK: Playback
