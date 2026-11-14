@@ -47,15 +47,3 @@ enum ModelPreparationState: Equatable {
     case ready
     case error(String)
 }
-
-enum WorkStageRoute: Equatable {
-    case recorder
-    case processing(UUID)
-    case transcript(UUID)
-}
-
-struct CuePlaybackPresentation: Equatable {
-    let statusLabel: String
-    let description: String
-    let iconName: String
-}

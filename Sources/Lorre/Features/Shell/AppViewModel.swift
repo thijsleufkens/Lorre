@@ -161,58 +161,6 @@ final class AppViewModel: ObservableObject {
         return sessions.first(where: { $0.id == selectedSessionID })
     }
 
-    var hasActiveRecording: Bool {
-        isRecording || isStoppingRecording
-    }
-
-    var canControlPlayback: Bool {
-        guard !isStartingRecording, !isRecording, !isStoppingRecording else { return false }
-        guard let session = selectedSession else { return false }
-        guard session.hasRetainedAudio else { return false }
-        return session.status == .ready || session.status == .error
-    }
-
-    static func makeWorkStageRoute(selectedSession: SessionManifest?) -> WorkStageRoute {
-        guard let session = selectedSession else { return .recorder }
-        if session.status == .processing {
-            return .processing(session.id)
-        }
-        return .transcript(session.id)
-    }
-
-    static func makeCuePlaybackPresentation(
-        hasRetainedAudio: Bool,
-        canControlPlayback: Bool,
-        hasActiveRecording: Bool
-    ) -> CuePlaybackPresentation {
-        if !hasRetainedAudio {
-            return CuePlaybackPresentation(
-                statusLabel: "Playback unavailable",
-                description: "Privacy Mode deleted the source audio for this session, so cue playback is unavailable.",
-                iconName: "lock.fill"
-            )
-        }
-        if hasActiveRecording {
-            return CuePlaybackPresentation(
-                statusLabel: "Playback paused during recording",
-                description: "Stop the active recording before cueing or playing archived audio from this session.",
-                iconName: "record.circle.fill"
-            )
-        }
-        if !canControlPlayback {
-            return CuePlaybackPresentation(
-                statusLabel: "Cue Playback",
-                description: "Cue playback becomes available once the session is ready.",
-                iconName: "clock.fill"
-            )
-        }
-        return CuePlaybackPresentation(
-            statusLabel: "Cue Playback",
-            description: "Click a fragment or timestamp to play from that point.",
-            iconName: "play.fill"
-        )
-    }
-
     func count(for filter: ShelfFilter) -> Int {
         cachedViewCounts[filter] ?? 0
     }
