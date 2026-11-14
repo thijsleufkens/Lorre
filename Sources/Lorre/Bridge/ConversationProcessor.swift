@@ -18,6 +18,10 @@ struct ConversationProcessor: Sendable {
         var languageCode: String?
         /// When set and enabled, the transcript is also exported for downstream consumers.
         var automaticExport: AutomaticMarkdownExportConfiguration?
+        /// Write the transcript-only draft record once a recording has been transcribed.
+        var writesDraftRecord = true
+        /// Where the draft record goes; nil uses the export folder from the settings.
+        var recordFolder: URL?
 
         init() {}
 
@@ -65,6 +69,11 @@ struct ConversationProcessor: Sendable {
             let segmentCount = try await transcribe(conversation, options: options, onProgress: onProgress)
             guard segmentCount > 0 else {
                 throw LorreError.processingFailed("No speech was found in the recording.")
+            }
+            if options.writesDraftRecord, conversation.importedAt == nil {
+                // Best effort, like the automatic export: a failed draft must not fail the processing.
+                let folder: (@Sendable () throws -> URL)? = options.recordFolder.map { url in { @Sendable in url } }
+                _ = try? RecordExporter(database: database, folder: folder).exportDraft(conversationId)
             }
             guard let updated = try store.setState(.proposed, lastError: nil, for: conversationId) else {
                 throw LorreError.sessionNotFound

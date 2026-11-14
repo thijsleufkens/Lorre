@@ -39,6 +39,19 @@ final class ConversationProcessorTests: XCTestCase {
         )
     }
 
+    private var recordFolder: URL { root.appendingPathComponent("records", isDirectory: true) }
+
+    /// Options that keep the draft record inside the test's temporary root.
+    private func testOptions() -> ConversationProcessor.Options {
+        var options = ConversationProcessor.Options()
+        options.recordFolder = recordFolder
+        return options
+    }
+
+    private func draftFiles() -> [String] {
+        ((try? FileManager.default.contentsOfDirectory(atPath: recordFolder.path)) ?? []).filter { $0.hasSuffix(".json") }
+    }
+
     private func writeTone(_ url: URL, seconds: Double) throws {
         let format = AVAudioFormat(commonFormat: .pcmFormatFloat32, sampleRate: 16_000, channels: 1, interleaved: false)!
         let samples = (0..<Int(seconds * 16_000)).map { Float(sin(Double($0) * 0.05)) * 0.4 }
@@ -75,7 +88,7 @@ final class ConversationProcessorTests: XCTestCase {
     func testTwoTracksGetAMixATranscriptAndBecomeProposed() async throws {
         let conversation = try makeConversation()
 
-        let processed = try await processor().process(conversation.id, options: .init())
+        let processed = try await processor().process(conversation.id, options: testOptions())
 
         XCTAssertEqual(processed.state, .proposed)
         XCTAssertNil(processed.lastError)
@@ -92,9 +105,39 @@ final class ConversationProcessorTests: XCTestCase {
         )
     }
 
+    func testProcessedRecordingProducesADraftRecord() async throws {
+        let conversation = try makeConversation()
+        _ = try await processor().process(conversation.id, options: testOptions())
+
+        let name = try XCTUnwrap(draftFiles().first)
+        XCTAssertEqual(draftFiles().count, 1)
+        let data = try Data(contentsOf: recordFolder.appendingPathComponent(name))
+        let record = try MeetingRecord.decoder().decode(MeetingRecord.self, from: data)
+        XCTAssertEqual(record.status, .draft)
+        XCTAssertEqual(record.recordId, conversation.id)
+        XCTAssertTrue(record.outcomes.isEmpty)
+        XCTAssertFalse(record.transcript.segments.isEmpty)
+    }
+
+    func testDraftRecordCanBeSwitchedOff() async throws {
+        let conversation = try makeConversation()
+        var options = testOptions()
+        options.writesDraftRecord = false
+        _ = try await processor().process(conversation.id, options: options)
+        XCTAssertTrue(draftFiles().isEmpty)
+    }
+
+    func testAFailingDraftExportDoesNotFailProcessing() async throws {
+        let conversation = try makeConversation()
+        // A file where the folder should be: the export cannot create it.
+        try Data("x".utf8).write(to: recordFolder)
+        let processed = try await processor().process(conversation.id, options: testOptions())
+        XCTAssertEqual(processed.state, .proposed)
+    }
+
     func testSingleTrackIsUsedAsIs() async throws {
         let conversation = try makeConversation(source: .microphone)
-        let processed = try await processor().process(conversation.id, options: .init())
+        let processed = try await processor().process(conversation.id, options: testOptions())
         XCTAssertEqual(processed.state, .proposed)
         XCTAssertEqual(files(in: conversation), ["microphone.caf", "transcript.md"])
     }
@@ -106,7 +149,7 @@ final class ConversationProcessorTests: XCTestCase {
         }
 
         do {
-            _ = try await processor(failing: true).process(conversation.id, options: .init())
+            _ = try await processor(failing: true).process(conversation.id, options: testOptions())
             XCTFail("processing should fail")
         } catch {}
 
@@ -120,14 +163,14 @@ final class ConversationProcessorTests: XCTestCase {
         XCTAssertNil(try store.currentTranscriptVersion(conversationId: conversation.id))
 
         // The same conversation can be processed again once the problem is gone.
-        let retried = try await processor().process(conversation.id, options: .init())
+        let retried = try await processor().process(conversation.id, options: testOptions())
         XCTAssertEqual(retried.state, .proposed)
         XCTAssertNil(retried.lastError)
     }
 
     func testInterruptedConversationCanBeProcessed() async throws {
         let conversation = try makeConversation(state: .interrupted)
-        let processed = try await processor().process(conversation.id, options: .init())
+        let processed = try await processor().process(conversation.id, options: testOptions())
         XCTAssertEqual(processed.state, .proposed)
     }
 
@@ -136,7 +179,7 @@ final class ConversationProcessorTests: XCTestCase {
         let folder = paths.conversationFolder(conversation.id)
         try Data("not audio".utf8).write(to: folder.appendingPathComponent("system-audio.caf"))
 
-        let processed = try await processor().process(conversation.id, options: .init())
+        let processed = try await processor().process(conversation.id, options: testOptions())
         XCTAssertEqual(processed.state, .proposed)
         XCTAssertFalse(files(in: conversation).contains("mix.partial.caf"))
     }
@@ -159,13 +202,14 @@ final class ConversationProcessorTests: XCTestCase {
             Track(conversationId: conversation.id, kind: .system, relativePath: "sessions/\(conversation.id.uuidString)/system-audio.caf"),
         ])
 
-        _ = try await processor().process(conversation.id, options: .init())
+        _ = try await processor().process(conversation.id, options: testOptions())
 
         XCTAssertEqual(
             Set(try FileManager.default.contentsOfDirectory(atPath: legacy.path)),
             ["microphone.caf", "system-audio.caf"]
         )
         XCTAssertEqual(files(in: conversation), ["mix.caf", "transcript.md"])
+        XCTAssertTrue(draftFiles().isEmpty, "an imported conversation gets no draft record")
         XCTAssertEqual(
             try store.tracks(conversationId: conversation.id).first { $0.kind == .mix }?.relativePath,
             "conversations/\(conversation.id.uuidString)/mix.caf"
@@ -179,7 +223,7 @@ final class ConversationProcessorTests: XCTestCase {
             try Data().write(to: folder.appendingPathComponent(name))
         }
         do {
-            _ = try await processor().process(conversation.id, options: .init())
+            _ = try await processor().process(conversation.id, options: testOptions())
             XCTFail("processing should fail")
         } catch {}
         XCTAssertNotNil(try store.conversation(id: conversation.id)?.lastError)
@@ -187,9 +231,9 @@ final class ConversationProcessorTests: XCTestCase {
 
     func testProcessingAgainDoesNotDuplicateParticipants() async throws {
         let conversation = try makeConversation()
-        _ = try await processor().process(conversation.id, options: .init())
+        _ = try await processor().process(conversation.id, options: testOptions())
         let first = try store.participants(conversationId: conversation.id)
-        _ = try await processor().process(conversation.id, options: .init())
+        _ = try await processor().process(conversation.id, options: testOptions())
         XCTAssertEqual(try store.participants(conversationId: conversation.id), first)
     }
 
@@ -197,7 +241,7 @@ final class ConversationProcessorTests: XCTestCase {
         let conversation = try makeConversation()
         let exportFolder = root.appendingPathComponent("export", isDirectory: true)
         try FileManager.default.createDirectory(at: exportFolder, withIntermediateDirectories: true)
-        var options = ConversationProcessor.Options()
+        var options = testOptions()
         options.automaticExport = AutomaticMarkdownExportConfiguration(
             isEnabled: true,
             folderPath: exportFolder.path,
