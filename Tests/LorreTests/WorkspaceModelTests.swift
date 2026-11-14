@@ -69,7 +69,7 @@ final class WorkspaceModelTests: XCTestCase {
 
     func testSectionDefaultsToToday() {
         XCTAssertEqual(workspace.section, .today)
-        XCTAssertEqual(WorkspaceSection.allCases, [.today, .conversations])
+        XCTAssertEqual(WorkspaceSection.allCases, [.today, .conversations, .people])
     }
 
     private func transcribe(_ conversation: Conversation, text: String) throws {
