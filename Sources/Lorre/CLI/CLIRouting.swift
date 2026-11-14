@@ -8,7 +8,8 @@ enum CLIRouting {
     // "help" is ArgumentParser's auto-generated subcommand; its own --help
     // output advertises `Lorre help <subcommand>`, so it must route to CLI.
     static let subcommands: Set<String> = [
-        "transcribe", "list", "show", "process", "recover", "import-legacy", "capture-selftest", "help",
+        "transcribe", "list", "show", "process", "recover", "import-legacy", "capture-selftest",
+        "records", "record", "mark-processed", "mcp", "help",
     ]
 
     /// ArgumentParser global flags that should route to CLI even without a subcommand.
