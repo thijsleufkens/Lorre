@@ -52,7 +52,8 @@ struct WorkspaceView: View {
     @ViewBuilder private var content: some View {
         if let review = workspace.review {
             ReviewView(review: review) {
-                workspace.section = .today
+                // After finishing you go to what is next; otherwise back to where you came from.
+                if review.isFinished { workspace.section = .today }
                 workspace.closeReview()
             }
             .id(review.conversationID)

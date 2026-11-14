@@ -48,6 +48,9 @@ struct OutcomeListView: View {
                 .labelsHidden()
                 .fixedSize()
                 .help(strings.addKindHelp)
+                Spacer(minLength: 0)
+            }
+            HStack(spacing: DS.Space.x2) {
                 TextField(strings.addPlaceholder, text: Bindable(draft).addText)
                     .textFieldStyle(.roundedBorder)
                     .focused(focus, equals: .add)
@@ -231,7 +234,7 @@ private struct OutcomeRow: View {
             .help(strings.approve)
             Button {
                 review.select(outcome.id)
-                review.rejectSelected()
+                review.removeSelected()
             } label: {
                 Image(systemName: "xmark").font(DS.FontStyle.icon)
             }

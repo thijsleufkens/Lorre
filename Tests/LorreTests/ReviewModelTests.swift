@@ -244,6 +244,21 @@ final class ReviewModelTests: XCTestCase {
         XCTAssertNil(model.errorMessage)
     }
 
+    func testRemoveDeletesOwnOutcomeAndRejectsAProposal() throws {
+        model.addOutcome(kind: .openPoint, text: "Prijs bespreken")
+        let added = try XCTUnwrap(model.selectedOutcomeID)
+        model.removeSelected()
+        let store = ReviewStore(database: fixture.database)
+        let all = try store.outcomes(conversationId: model.conversationID, includingRejected: true)
+        XCTAssertFalse(all.contains { $0.id == added })
+
+        model.select(fixture.myAction.id)
+        model.removeSelected()
+        let after = try store.outcomes(conversationId: model.conversationID, includingRejected: true)
+        XCTAssertEqual(after.first { $0.id == fixture.myAction.id }?.status, .rejected)
+        XCTAssertNil(model.errorMessage)
+    }
+
     func testUpdateSelectedChangesTextAndFlagsAnEditedProposal() {
         model.select(fixture.myAction.id)
         model.updateSelected(text: "Offerte morgen sturen")

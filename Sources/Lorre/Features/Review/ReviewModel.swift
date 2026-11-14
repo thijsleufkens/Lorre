@@ -180,6 +180,12 @@ final class ReviewModel {
         selectedOutcomeID = successor
     }
 
+    /// Takes the selected outcome off the list: a point you added yourself is deleted,
+    /// a proposal is rejected.
+    func removeSelected() {
+        if selectedOutcome?.source == .user { deleteSelected() } else { rejectSelected() }
+    }
+
     func deleteSelected() {
         guard let outcome = selectedOutcome else { return }
         guard outcome.source == .user else {

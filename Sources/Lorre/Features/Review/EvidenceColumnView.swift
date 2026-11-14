@@ -12,13 +12,15 @@ struct EvidenceColumnView: View {
 
     var body: some View {
         ScrollViewReader { proxy in
-            ScrollView {
-                VStack(alignment: .leading, spacing: DS.Space.x4) {
-                    evidence
-                    Divider()
+            VStack(alignment: .leading, spacing: 0) {
+                evidence
+                    .padding(DS.Space.x4)
+                Divider()
+                ScrollView {
                     transcript
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(DS.Space.x4)
                 }
-                .padding(DS.Space.x4)
             }
             .onChange(of: review.selectedOutcomeID) { scrollToEvidence(proxy) }
             .onChange(of: draft.transcriptExpanded) { scrollToEvidence(proxy) }

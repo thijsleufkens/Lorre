@@ -121,7 +121,7 @@ struct ReviewView: View {
         case "a":
             review.approveSelected()
         case "x":
-            review.rejectSelected()
+            review.removeSelected()
         case "e":
             guard let outcome = review.selectedOutcome else { return .ignored }
             draft.beginEdit(outcome)
